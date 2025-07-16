@@ -1,14 +1,19 @@
 import Phaser from 'phaser';
 
+// Custom interfaces for better type safety
+interface PlayerSprite extends Phaser.Physics.Arcade.Sprite {
+  dustParticles?: Phaser.GameObjects.Particles.ParticleEmitter;
+}
+
+interface WASDKeys {
+  left: Phaser.Input.Keyboard.Key;
+}
+
 export class GameScene extends Phaser.Scene {
-  private player!: Phaser.Physics.Arcade.Sprite;
+  private player!: PlayerSprite;
   private platforms!: Phaser.Physics.Arcade.StaticGroup;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-  private wasd!: {
-    down: Phaser.Input.Keyboard.Key;
-    left: Phaser.Input.Keyboard.Key;
-    right: Phaser.Input.Keyboard.Key;
-  };
+  private wasd!: WASDKeys;
   private jumpKey!: Phaser.Input.Keyboard.Key; // This will be D key
   private dashKey!: Phaser.Input.Keyboard.Key; // This will be S key
   private coyoteTime: number = 0;
@@ -66,14 +71,16 @@ export class GameScene extends Phaser.Scene {
     this.physics.world.setBounds(0, 0, arenaWidth, 768);
 
     // Create input handlers
-    this.cursors = this.input.keyboard!.createCursorKeys();
-    this.wasd = this.input.keyboard!.addKeys('A') as {
-      down: Phaser.Input.Keyboard.Key;
-      left: Phaser.Input.Keyboard.Key;
-      right: Phaser.Input.Keyboard.Key;
+    if (!this.input.keyboard) {
+      throw new Error('Keyboard input not available');
+    }
+    
+    this.cursors = this.input.keyboard.createCursorKeys();
+    this.wasd = {
+      left: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A)
     };
-    this.jumpKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D); // D key for jump
-    this.dashKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.S); // S key for dash
+    this.jumpKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D); // D key for jump
+    this.dashKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S); // S key for dash
 
     // Add some visual flair
     this.createBackground();
@@ -163,7 +170,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Store particles for later use
-    (this.player as any).dustParticles = particles;
+    this.player.dustParticles = particles;
   }
 
   update() {
@@ -229,7 +236,7 @@ export class GameScene extends Phaser.Scene {
       this.coyoteTime = 0; // Reset coyote time after jumping
       
       // Create dust effect on jump
-      const particles = (this.player as any).dustParticles;
+      const particles = this.player.dustParticles;
       if (particles) {
         particles.setPosition(this.player.x, this.player.y + 24);
         particles.explode(5);
@@ -246,7 +253,7 @@ export class GameScene extends Phaser.Scene {
     // Fast fall when pressing down in midair (only if not dashing)
     if (this.cursors?.down?.isDown && !playerBody.touching.down && !this.isDashing) {
       // Apply strong downward force for fast fall
-      this.player.setVelocityY(Math.max(this.player.body!.velocity.y, 300));
+      this.player.setVelocityY(Math.max(playerBody.velocity.y, 300));
     }
 
     // Dynamic gravity based on jump phase
@@ -273,10 +280,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Add some bounce and feel
-    if (this.player.body!.touching.down && Math.abs(this.player.body!.velocity.x) > 0) {
+    if (playerBody.touching.down && Math.abs(playerBody.velocity.x) > 0) {
       // Create small dust particles when running
       if (Math.random() < 0.1) {
-        const particles = (this.player as any).dustParticles;
+        const particles = this.player.dustParticles;
         if (particles) {
           particles.setPosition(this.player.x, this.player.y + 24);
           particles.explode(1);
@@ -286,7 +293,7 @@ export class GameScene extends Phaser.Scene {
 
     // Camera smoothing based on player movement
     const camera = this.cameras.main;
-    if (Math.abs(this.player.body!.velocity.x) > 50) {
+    if (Math.abs(playerBody.velocity.x) > 50) {
       camera.setLerp(0.1, 0.1);
     } else {
       camera.setLerp(0.05, 0.05);
@@ -347,15 +354,15 @@ export class GameScene extends Phaser.Scene {
       this.player.setTint(0xFF6B6B); // Return to normal color
       
       // Reduce velocity slightly after dash
-      const currentVelX = this.player.body!.velocity.x;
-      const currentVelY = this.player.body!.velocity.y;
+      const body = this.player.body as Phaser.Physics.Arcade.Body;
+      const currentVelX = body.velocity.x;
+      const currentVelY = body.velocity.y;
       this.player.setVelocity(currentVelX * 0.7, currentVelY * 0.7);
       
       // Re-enable gravity after dash
-      const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
-      if (!playerBody.touching.down) {
+      if (!body.touching.down) {
         // Set appropriate gravity based on current state
-        playerBody.setGravityY(400);
+        body.setGravityY(400);
       }
     });
 
