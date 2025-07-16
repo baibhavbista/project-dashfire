@@ -2,6 +2,8 @@ import Phaser from 'phaser';
 import { WeaponSystem } from './WeaponSystem';
 import { Bullet } from './BulletPool';
 import { SoundManager } from './SoundManager';
+import { NetworkManager, PlayerData, BulletData } from './network/NetworkManager';
+import { RemotePlayer } from './network/RemotePlayer';
 
 // Custom interfaces for better type safety
 interface PlayerSprite extends Phaser.Physics.Arcade.Sprite {
@@ -18,6 +20,11 @@ export class GameScene extends Phaser.Scene {
   private shootKeyAlt!: Phaser.Input.Keyboard.Key; // This will be A key
   private weaponSystem!: WeaponSystem;
   private soundManager!: SoundManager;
+  private networkManager?: NetworkManager;
+  private remotePlayers: Map<string, RemotePlayer> = new Map();
+  private isMultiplayer: boolean = false;
+  private localPlayerId?: string;
+  private multiplayerUI?: Phaser.GameObjects.Container;
   private coyoteTime: number = 0;
   private readonly COYOTE_TIME_MS: number = 150; // 150ms window after leaving platform
   private canDash: boolean = true;
@@ -58,6 +65,23 @@ export class GameScene extends Phaser.Scene {
   }
 
   create() {
+    // Store reference to this scene for external access
+    (this.game as Phaser.Game & { gameScene?: GameScene }).gameScene = this;
+    
+    // Check if we're in multiplayer mode
+    const networkManager = this.game.registry.get('networkManager');
+    const isMultiplayer = this.game.registry.get('isMultiplayer');
+    
+    if (networkManager && isMultiplayer) {
+      this.networkManager = networkManager;
+      this.isMultiplayer = isMultiplayer;
+      console.log("GameScene: Found network manager, setting up multiplayer...");
+      // Setup multiplayer handlers after scene is created
+      this.time.delayedCall(100, () => {
+        this.setupMultiplayerHandlers();
+      });
+    }
+    
     // Create platforms group
     this.platforms = this.physics.add.staticGroup();
 
@@ -207,6 +231,199 @@ export class GameScene extends Phaser.Scene {
     this.player.dustParticles = particles;
   }
 
+  setupMultiplayerHandlers() {
+    if (!this.networkManager || !this.isMultiplayer) return;
+    
+    console.log("Setting up multiplayer handlers...");
+    console.log("Current remotePlayers count:", this.remotePlayers.size);
+    
+    // Set up event listeners
+    this.networkManager.on("team-assigned", (data: { playerId: string; team: "red" | "blue"; roomId: string }) => {
+      this.localPlayerId = data.playerId;
+      
+      // Update player color based on team
+      const teamColor = data.team === "red" ? 0xFF6B6B : 0x4ECDC4;
+      this.player.setTint(teamColor);
+      
+      // Teleport to team spawn point
+      if (data.team === "red") {
+        this.player.setPosition(200, 500);
+      } else {
+        this.player.setPosition(2800, 500);
+      }
+      
+      console.log(`Joined team ${data.team} with player ID ${data.playerId}!`);
+      console.log(`Connected to room ${data.roomId}`);
+      
+      // Process any players that were added before we got our ID
+      this.networkManager?.emit("process-pending-players");
+    });
+    
+    this.networkManager.on("player-added", (player: PlayerData) => {
+      // Skip if it's the local player or already exists
+      if (player.id === this.localPlayerId || this.remotePlayers.has(player.id)) {
+        console.log(`Skipping player ${player.id} - is local: ${player.id === this.localPlayerId}, already exists: ${this.remotePlayers.has(player.id)}`);
+        return;
+      }
+      
+      // Create remote player
+      const remotePlayer = new RemotePlayer(this, player.id, player.x, player.y, player.team);
+      this.remotePlayers.set(player.id, remotePlayer);
+      console.log(`Player ${player.id} joined on team ${player.team} at position (${player.x}, ${player.y})`);
+    });
+    
+    this.networkManager.on("player-removed", (playerId: string) => {
+      const remotePlayer = this.remotePlayers.get(playerId);
+      if (remotePlayer) {
+        remotePlayer.destroy();
+        this.remotePlayers.delete(playerId);
+        console.log(`Player ${playerId} left`);
+      }
+    });
+    
+    this.networkManager.on("player-updated", (player: PlayerData) => {
+      const remotePlayer = this.remotePlayers.get(player.id);
+      if (remotePlayer) {
+        remotePlayer.update(
+          player.x, 
+          player.y, 
+          player.velocityX, 
+          player.velocityY, 
+          player.health, 
+          player.flipX, 
+          player.isDashing,
+          player.isDead
+        );
+      } else if (player.id !== this.localPlayerId && !this.remotePlayers.has(player.id)) {
+        // Player doesn't exist yet, create them
+        console.log(`Creating player ${player.id} from update event`);
+        const newRemotePlayer = new RemotePlayer(this, player.id, player.x, player.y, player.team);
+        this.remotePlayers.set(player.id, newRemotePlayer);
+      }
+    });
+    
+    this.networkManager.on("bullet-added", (bullet: BulletData) => {
+      // Only render bullets from other players
+      if (bullet.ownerId !== this.localPlayerId) {
+        // Create visual bullet (no physics, just visual)
+        const bulletSprite = this.add.rectangle(bullet.x, bullet.y, 6, 3, 0x000000);
+        
+        // Animate bullet
+        this.tweens.add({
+          targets: bulletSprite,
+          x: bullet.x + (bullet.velocityX * 3), // 3 seconds of travel
+          duration: 3000,
+          onComplete: () => bulletSprite.destroy()
+        });
+      }
+    });
+    
+    this.networkManager.on("state-changed", (state: { gameState: string; winningTeam?: string }) => {
+      // Update game state UI if needed
+      if (state.gameState === "ended") {
+        console.log(`Game ended! ${state.winningTeam} team wins!`);
+      }
+    });
+    
+    // Connection is already established from LobbyScene
+    console.log("Multiplayer handlers ready!");
+    
+    // Get initial player ID if already assigned
+    const playerId = this.networkManager.getPlayerId();
+    if (playerId) {
+      this.localPlayerId = playerId;
+      console.log("Already have player ID:", this.localPlayerId);
+    }
+    
+    // Set initial team color
+    const team = this.networkManager.getPlayerTeam();
+    if (team) {
+      const teamColor = team === "red" ? 0xFF6B6B : 0x4ECDC4;
+      this.player.setTint(teamColor);
+      console.log("Already assigned to team:", team);
+      
+      // Teleport to team spawn point if already assigned
+      if (team === "red") {
+        this.player.setPosition(200, 500);
+      } else {
+        this.player.setPosition(2800, 500);
+      }
+    }
+    
+    // Create multiplayer UI
+    this.createMultiplayerUI();
+    
+    // Request current room state to ensure we have all players
+    console.log("Local player ID:", this.localPlayerId);
+    console.log("Checking for existing players in room...");
+  }
+  
+  createMultiplayerUI() {
+    // Create UI container
+    this.multiplayerUI = this.add.container(0, 0);
+    this.multiplayerUI.setScrollFactor(0); // Keep UI fixed on screen
+    
+    // Background for UI
+    const bg = this.add.rectangle(512, 30, 300, 50, 0x000000, 0.7);
+    
+    // Team indicator
+    const team = this.networkManager?.getPlayerTeam();
+    const teamColor = team === "red" ? 0xFF6B6B : 0x4ECDC4;
+    const teamText = this.add.text(512, 20, `Team: ${team?.toUpperCase() || 'Unknown'}`, {
+      fontSize: '16px',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+    
+    // Leave button
+    const leaveBtn = this.add.rectangle(512, 45, 100, 25, 0xff0000)
+      .setInteractive()
+      .on('pointerover', () => leaveBtn.setFillStyle(0xdd0000))
+      .on('pointerout', () => leaveBtn.setFillStyle(0xff0000))
+      .on('pointerdown', () => {
+        this.leaveMultiplayer();
+        this.scene.start('LobbyScene');
+      });
+      
+    const leaveText = this.add.text(512, 45, 'Leave Game', {
+      fontSize: '14px',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+    
+    // Add team color indicator
+    const teamIndicator = this.add.circle(420, 30, 10, teamColor);
+    
+    // Add all to container
+    this.multiplayerUI.add([bg, teamText, leaveBtn, leaveText, teamIndicator]);
+  }
+  
+  leaveMultiplayer() {
+    if (this.networkManager) {
+      this.networkManager.disconnect();
+      this.networkManager = undefined;
+    }
+    
+    // Clean up remote players
+    this.remotePlayers.forEach(player => player.destroy());
+    this.remotePlayers.clear();
+    
+    // Reset to single player
+    this.isMultiplayer = false;
+    this.localPlayerId = undefined;
+    
+    // Reset player color
+    this.player.setTint(0xFF6B6B);
+    
+    // Destroy multiplayer UI
+    this.multiplayerUI?.destroy();
+    this.multiplayerUI = undefined;
+    
+    // Clean up registry
+    this.game.registry.remove('networkManager');
+    this.game.registry.remove('isMultiplayer');
+    
+    console.log("Left multiplayer mode");
+  }
+
   update() {
     const maxSpeed = 300;
     const acceleration = 1200; // High acceleration for snappy movement
@@ -223,6 +440,16 @@ export class GameScene extends Phaser.Scene {
     if (Phaser.Input.Keyboard.JustDown(this.shootKey) || Phaser.Input.Keyboard.JustDown(this.shootKeyAlt)) {
       if (this.weaponSystem.shoot(this.isDashing)) {
         this.soundManager.playShoot();
+        
+        // Send shoot to server if multiplayer
+        if (this.isMultiplayer && this.networkManager) {
+          const direction = this.player.flipX ? -1 : 1;
+          this.networkManager.sendShoot({
+            x: this.player.x + (24 * direction * 0.9),
+            y: this.player.y,
+            velocityX: 700 * direction
+          });
+        }
       }
     }
 
@@ -378,6 +605,17 @@ export class GameScene extends Phaser.Scene {
 
     // Update dash trails
     this.updateDashTrails();
+
+    // Send player position to server if multiplayer
+    if (this.isMultiplayer && this.networkManager) {
+      this.networkManager.sendMovement({
+        x: this.player.x,
+        y: this.player.y,
+        velocityX: playerBody.velocity.x,
+        velocityY: playerBody.velocity.y,
+        flipX: this.player.flipX
+      });
+    }
   }
 
   performDash(dashPower: number) {
@@ -437,6 +675,11 @@ export class GameScene extends Phaser.Scene {
     // Play dash sound
     this.soundManager.playDash();
 
+    // Send dash to server if multiplayer
+    if (this.isMultiplayer && this.networkManager) {
+      this.networkManager.sendDash(true);
+    }
+
     // Change player color during dash
     this.player.setTint(0x00FFFF); // Cyan color during dash
 
@@ -453,7 +696,20 @@ export class GameScene extends Phaser.Scene {
 
   endDash() {
     this.isDashing = false;
-    this.player.setTint(0xFF6B6B); // Return to normal color
+    
+    // Send dash end to server if multiplayer
+    if (this.isMultiplayer && this.networkManager) {
+      this.networkManager.sendDash(false);
+    }
+    
+    // Return to team color
+    if (this.isMultiplayer && this.networkManager) {
+      const team = this.networkManager.getPlayerTeam();
+      const teamColor = team === "red" ? 0xFF6B6B : 0x4ECDC4;
+      this.player.setTint(teamColor);
+    } else {
+      this.player.setTint(0xFF6B6B); // Default color
+    }
     
     // Reduce velocity slightly after dash
     const body = this.player.body as Phaser.Physics.Arcade.Body;

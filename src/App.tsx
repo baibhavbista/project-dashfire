@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import Phaser from 'phaser';
 import { GameScene } from './GameScene';
+import { LobbyScene } from './scenes/LobbyScene';
 
 function App() {
   const gameRef = useRef<Phaser.Game | null>(null);
@@ -22,7 +23,7 @@ function App() {
           debug: false
         }
       },
-      scene: GameScene
+      scene: [GameScene, LobbyScene]
     };
 
     gameRef.current = new Phaser.Game(config);
@@ -45,6 +46,20 @@ function App() {
         <div className="mt-4 text-sm text-gray-600 text-center">
           <p><strong>Controls:</strong> Arrow Keys to move, D to jump, S to dash (midair only), A or Space to shoot</p>
           <p>Explore the arena and prepare for battle!</p>
+        </div>
+        <div className="mt-4 text-center">
+          <button 
+            onClick={() => {
+              // Switch to lobby scene
+              const game = gameRef.current;
+              if (game && game.scene) {
+                game.scene.start('LobbyScene');
+              }
+            }}
+            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+          >
+            Join Multiplayer
+          </button>
         </div>
       </div>
     </div>
