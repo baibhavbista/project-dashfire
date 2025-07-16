@@ -30,7 +30,7 @@ export class GameScene extends Phaser.Scene {
   private canDash: boolean = true;
   private isDashing: boolean = false;
   private dashCooldown: number = 0;
-  private readonly DASH_COOLDOWN_MS: number = 100; // Brief cooldown after dash
+  private readonly DASH_COOLDOWN_MS: number = 300; // Longer cooldown for network sync
   private dashTrails: Phaser.GameObjects.Image[] = [];
   private readonly MAX_TRAILS: number = 8;
   
@@ -46,6 +46,29 @@ export class GameScene extends Phaser.Scene {
     up: false,
     down: false
   };
+
+  // Client-side prediction
+  private lastServerPosition: { x: number; y: number } = { x: 0, y: 0 };
+  private predictionError: { x: number; y: number } = { x: 0, y: 0 };
+  private reconciliationSpeed: number = 0.3; // How fast to correct prediction errors
+  private debugText?: Phaser.GameObjects.Text;
+  
+  // Health UI
+  private healthBar?: Phaser.GameObjects.Rectangle;
+  private healthBarBg?: Phaser.GameObjects.Rectangle;
+  private healthText?: Phaser.GameObjects.Text;
+  private currentHealth: number = 100;
+  private isDead: boolean = false;
+  private respawnTimer?: Phaser.GameObjects.Text;
+  
+  // Kill feed
+  private killFeedContainer?: Phaser.GameObjects.Container;
+  private killFeedMessages: Phaser.GameObjects.Text[] = [];
+  
+  // Team scores
+  private scoreText?: Phaser.GameObjects.Text;
+  private redScore: number = 0;
+  private blueScore: number = 0;
 
   constructor() {
     super({ key: 'GameScene' });
@@ -275,9 +298,10 @@ export class GameScene extends Phaser.Scene {
     this.networkManager.on("player-removed", (playerId: string) => {
       const remotePlayer = this.remotePlayers.get(playerId);
       if (remotePlayer) {
+        console.log(`Removing player ${playerId}`);
         remotePlayer.destroy();
         this.remotePlayers.delete(playerId);
-        console.log(`Player ${playerId} left`);
+        console.log(`Player ${playerId} removed successfully`);
       }
     });
     
@@ -318,10 +342,67 @@ export class GameScene extends Phaser.Scene {
       }
     });
     
-    this.networkManager.on("state-changed", (state: { gameState: string; winningTeam?: string }) => {
+    this.networkManager.on("state-changed", (state: { gameState: string; winningTeam?: string; scores?: { red: number; blue: number } }) => {
       // Update game state UI if needed
       if (state.gameState === "ended") {
         console.log(`Game ended! ${state.winningTeam} team wins!`);
+      }
+      
+      // Update scores
+      if (state.scores) {
+        this.redScore = state.scores.red;
+        this.blueScore = state.scores.blue;
+        this.updateScoreDisplay();
+      }
+    });
+    
+    // Listen for kill events
+    this.networkManager.on("player-killed", (data: { killerId: string; victimId: string; killerName?: string; victimName?: string }) => {
+      // Add to kill feed
+      const killerName = data.killerName || "Player";
+      const victimName = data.victimName || "Player";
+      this.addKillFeedMessage(killerName, victimName);
+      
+      // Play death sound if it's the local player
+      if (data.victimId === this.localPlayerId) {
+        // Could add death sound here
+      }
+    });
+    
+    // Listen for our own position updates from server (for reconciliation)
+    this.networkManager.on("local-player-server-update", (serverData: { x: number; y: number; health: number; isDead?: boolean; respawnTimer?: number }) => {
+      this.handleServerReconciliation({ x: serverData.x, y: serverData.y });
+      
+      // Update health
+      if (serverData.health !== undefined) {
+        this.currentHealth = serverData.health;
+        this.updateHealthUI();
+      }
+      
+      // Update death state
+      if (serverData.isDead !== undefined) {
+        this.isDead = serverData.isDead;
+        
+        if (this.isDead) {
+          // Player died
+          this.player.setAlpha(0.3);
+          this.player.setVelocity(0, 0);
+        } else {
+          // Player respawned
+          this.player.setAlpha(1);
+          this.respawnTimer?.setVisible(false);
+        }
+      }
+      
+      // Update respawn timer
+      if (this.isDead && serverData.respawnTimer !== undefined && this.respawnTimer) {
+        const seconds = Math.ceil(serverData.respawnTimer / 1000);
+        if (seconds > 0) {
+          this.respawnTimer.setText(`Respawning in ${seconds}...`);
+          this.respawnTimer.setVisible(true);
+        } else {
+          this.respawnTimer.setVisible(false);
+        }
       }
     });
     
@@ -368,32 +449,167 @@ export class GameScene extends Phaser.Scene {
     
     // Team indicator
     const team = this.networkManager?.getPlayerTeam();
-    const teamColor = team === "red" ? 0xFF6B6B : 0x4ECDC4;
     const teamText = this.add.text(512, 20, `Team: ${team?.toUpperCase() || 'Unknown'}`, {
       fontSize: '16px',
       color: '#ffffff'
     }).setOrigin(0.5);
     
     // Leave button
-    const leaveBtn = this.add.rectangle(512, 45, 100, 25, 0xff0000)
+    const leaveBtn = this.add.text(512, 40, '[Leave Game]', {
+      fontSize: '14px',
+      color: '#ff6666'
+    }).setOrigin(0.5)
       .setInteractive()
-      .on('pointerover', () => leaveBtn.setFillStyle(0xdd0000))
-      .on('pointerout', () => leaveBtn.setFillStyle(0xff0000))
       .on('pointerdown', () => {
         this.leaveMultiplayer();
-        this.scene.start('LobbyScene');
       });
-      
-    const leaveText = this.add.text(512, 45, 'Leave Game', {
+    
+    this.multiplayerUI.add([bg, teamText, leaveBtn]);
+    
+    // Create team score display
+    this.scoreText = this.add.text(512, 80, 'Red: 0 | Blue: 0', {
+      fontSize: '24px',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2
+    });
+    this.scoreText.setOrigin(0.5);
+    this.scoreText.setScrollFactor(0);
+    
+    // Create health bar UI in top-left
+    this.createHealthUI();
+    
+    // Create debug display (F3 to toggle)
+    this.debugText = this.add.text(10, 100, '', {
+      fontSize: '12px',
+      color: '#00ff00',
+      backgroundColor: '#000000',
+      padding: { x: 5, y: 5 }
+    });
+    this.debugText.setScrollFactor(0);
+    this.debugText.setVisible(false);
+    
+    // Toggle debug with F3
+    this.input.keyboard?.on('keydown-F3', () => {
+      if (this.debugText) {
+        this.debugText.setVisible(!this.debugText.visible);
+      }
+    });
+  }
+  
+  createHealthUI() {
+    // Health bar background
+    this.healthBarBg = this.add.rectangle(10, 10, 204, 24, 0x000000);
+    this.healthBarBg.setOrigin(0, 0);
+    this.healthBarBg.setScrollFactor(0);
+    this.healthBarBg.setAlpha(0.8);
+    
+    // Health bar fill
+    this.healthBar = this.add.rectangle(12, 12, 200, 20, 0x00ff00);
+    this.healthBar.setOrigin(0, 0);
+    this.healthBar.setScrollFactor(0);
+    
+    // Health text
+    this.healthText = this.add.text(112, 22, '100/100', {
       fontSize: '14px',
-      color: '#ffffff'
-    }).setOrigin(0.5);
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2
+    });
+    this.healthText.setOrigin(0.5);
+    this.healthText.setScrollFactor(0);
     
-    // Add team color indicator
-    const teamIndicator = this.add.circle(420, 30, 10, teamColor);
+    // Respawn timer (initially hidden)
+    this.respawnTimer = this.add.text(512, 300, '', {
+      fontSize: '32px',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3
+    });
+    this.respawnTimer.setOrigin(0.5);
+    this.respawnTimer.setScrollFactor(0);
+    this.respawnTimer.setVisible(false);
     
-    // Add all to container
-    this.multiplayerUI.add([bg, teamText, leaveBtn, leaveText, teamIndicator]);
+    // Create kill feed container
+    this.killFeedContainer = this.add.container(1014, 600);
+    this.killFeedContainer.setScrollFactor(0);
+  }
+  
+  addKillFeedMessage(killerName: string, victimName: string) {
+    if (!this.killFeedContainer) return;
+    
+    // Create kill message
+    const message = this.add.text(0, 0, `${killerName} eliminated ${victimName}`, {
+      fontSize: '14px',
+      color: '#ffffff',
+      backgroundColor: '#000000',
+      padding: { x: 8, y: 4 }
+    });
+    message.setOrigin(1, 0);
+    message.setAlpha(0.9);
+    
+    // Position message
+    const yOffset = this.killFeedMessages.length * 25;
+    message.setY(-yOffset);
+    
+    this.killFeedContainer.add(message);
+    this.killFeedMessages.push(message);
+    
+    // Fade out and remove after 5 seconds
+    this.tweens.add({
+      targets: message,
+      alpha: 0,
+      delay: 5000,
+      duration: 500,
+      onComplete: () => {
+        const index = this.killFeedMessages.indexOf(message);
+        if (index > -1) {
+          this.killFeedMessages.splice(index, 1);
+          message.destroy();
+          
+          // Reposition remaining messages
+          this.killFeedMessages.forEach((msg, i) => {
+            this.tweens.add({
+              targets: msg,
+              y: -i * 25,
+              duration: 200
+            });
+          });
+        }
+      }
+    });
+    
+    // Limit to 5 messages
+    if (this.killFeedMessages.length > 5) {
+      const oldestMessage = this.killFeedMessages.shift();
+      oldestMessage?.destroy();
+    }
+  }
+  
+  updateHealthUI() {
+    if (!this.healthBar || !this.healthText) return;
+    
+    // Update bar width
+    const healthPercent = this.currentHealth / 100;
+    this.healthBar.setDisplaySize(200 * healthPercent, 20);
+    
+    // Update bar color based on health
+    if (healthPercent > 0.6) {
+      this.healthBar.setFillStyle(0x00ff00); // Green
+    } else if (healthPercent > 0.3) {
+      this.healthBar.setFillStyle(0xffff00); // Yellow
+    } else {
+      this.healthBar.setFillStyle(0xff0000); // Red
+    }
+    
+    // Update text
+    this.healthText.setText(`${Math.max(0, Math.round(this.currentHealth))}/100`);
+  }
+
+  updateScoreDisplay() {
+    if (this.scoreText) {
+      this.scoreText.setText(`Red: ${this.redScore} | Blue: ${this.blueScore}`);
+    }
   }
   
   leaveMultiplayer() {
@@ -417,6 +633,9 @@ export class GameScene extends Phaser.Scene {
     this.multiplayerUI?.destroy();
     this.multiplayerUI = undefined;
     
+    // Hide debug text
+    this.debugText?.setVisible(false);
+    
     // Clean up registry
     this.game.registry.remove('networkManager');
     this.game.registry.remove('isMultiplayer');
@@ -432,6 +651,11 @@ export class GameScene extends Phaser.Scene {
     
     const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
     const currentVelX = playerBody.velocity.x;
+    
+    // If player is dead, don't allow any input
+    if (this.isDead) {
+      return;
+    }
 
     // Update weapon system
     this.weaponSystem.update(this.game.loop.delta);
@@ -606,6 +830,27 @@ export class GameScene extends Phaser.Scene {
     // Update dash trails
     this.updateDashTrails();
 
+    // Apply smooth reconciliation if we have prediction error (only when not dashing)
+    if (!this.isDashing && (this.predictionError.x !== 0 || this.predictionError.y !== 0)) {
+      // Use slower reconciliation for a brief period after dashing
+      const reconciliationSpeed = this.dashCooldown > 0 ? 0.05 : this.reconciliationSpeed;
+      
+      const reconcileX = this.predictionError.x * reconciliationSpeed * (this.game.loop.delta / 1000);
+      const reconcileY = this.predictionError.y * reconciliationSpeed * (this.game.loop.delta / 1000);
+      
+      // Apply reconciliation
+      this.player.x += reconcileX;
+      this.player.y += reconcileY;
+      
+      // Reduce error
+      this.predictionError.x -= reconcileX;
+      this.predictionError.y -= reconcileY;
+      
+      // Clear tiny errors
+      if (Math.abs(this.predictionError.x) < 0.1) this.predictionError.x = 0;
+      if (Math.abs(this.predictionError.y) < 0.1) this.predictionError.y = 0;
+    }
+
     // Send player position to server if multiplayer
     if (this.isMultiplayer && this.networkManager) {
       this.networkManager.sendMovement({
@@ -615,6 +860,21 @@ export class GameScene extends Phaser.Scene {
         velocityY: playerBody.velocity.y,
         flipX: this.player.flipX
       });
+      
+      // Update debug text
+      if (this.debugText && this.debugText.visible) {
+        const errorMag = Math.sqrt(this.predictionError.x * this.predictionError.x + this.predictionError.y * this.predictionError.y);
+        this.debugText.setText([
+          `Network Debug (F3 to hide)`,
+          `Player ID: ${this.localPlayerId}`,
+          `Position: ${Math.round(this.player.x)}, ${Math.round(this.player.y)}`,
+          `Velocity: ${Math.round(playerBody.velocity.x)}, ${Math.round(playerBody.velocity.y)}`,
+          `Prediction Error: ${errorMag.toFixed(1)}px`,
+          `Dash State: ${this.isDashing ? 'DASHING' : (this.dashCooldown > 0 ? `Cooldown: ${Math.round(this.dashCooldown)}ms` : 'Ready')}`,
+          `Remote Players: ${this.remotePlayers.size}`,
+          `FPS: ${Math.round(this.game.loop.actualFps)}`
+        ].join('\n'));
+      }
     }
   }
 
@@ -670,10 +930,15 @@ export class GameScene extends Phaser.Scene {
     // Set dash state
     this.isDashing = true;
     this.canDash = false;
-    this.dashCooldown = 100; // Brief cooldown
+    this.dashCooldown = 300; // Longer cooldown for network sync
 
     // Play dash sound
     this.soundManager.playDash();
+
+    // Clear any existing prediction error when starting dash
+    this.predictionError.x = 0;
+    this.predictionError.y = 0;
+    console.log(`Starting dash with velocity: ${dashX * dashPower}, ${dashY * dashPower}`);
 
     // Send dash to server if multiplayer
     if (this.isMultiplayer && this.networkManager) {
@@ -765,6 +1030,39 @@ export class GameScene extends Phaser.Scene {
     // Create trail during dash
     if (this.isDashing && Math.random() < 0.8) {
       this.createDashTrail();
+    }
+  }
+  
+  handleServerReconciliation(serverPos: { x: number; y: number }) {
+    // Calculate prediction error
+    const currentX = this.player.x;
+    const currentY = this.player.y;
+    
+    this.predictionError.x = serverPos.x - currentX;
+    this.predictionError.y = serverPos.y - currentY;
+    
+    // Only reconcile if error is significant (to avoid jitter)
+    const errorMagnitude = Math.sqrt(this.predictionError.x * this.predictionError.x + this.predictionError.y * this.predictionError.y);
+    
+    if (errorMagnitude > 5) { // 5 pixels threshold
+      // Store server position for smooth reconciliation
+      this.lastServerPosition.x = serverPos.x;
+      this.lastServerPosition.y = serverPos.y;
+      
+      // Be more tolerant during dashes and shortly after
+      const snapThreshold = this.isDashing || this.dashCooldown > 0 ? 300 : 100;
+      
+      // If error is too large, snap to server position
+      if (errorMagnitude > snapThreshold) {
+        this.player.setPosition(serverPos.x, serverPos.y);
+        this.predictionError.x = 0;
+        this.predictionError.y = 0;
+        console.log(`Large prediction error (${errorMagnitude.toFixed(1)}px), snapping to server position`);
+      }
+    } else {
+      // Small error, clear it
+      this.predictionError.x = 0;
+      this.predictionError.y = 0;
     }
   }
 }

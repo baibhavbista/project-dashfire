@@ -75,6 +75,11 @@ export class NetworkManager extends Phaser.Events.EventEmitter {
       this.room.onMessage("match-ended", (data) => {
         this.emit("match-ended", data);
       });
+      
+      // Listen for kill events
+      this.room.onMessage("player-killed", (data) => {
+        this.emit("player-killed", data);
+      });
 
       // Listen for state changes
       this.room.onStateChange((state) => {
@@ -115,13 +120,28 @@ export class NetworkManager extends Phaser.Events.EventEmitter {
         
         // Process player position updates on every state change (after listeners are set up)
         if (state.players && this.listenersSetup) {
-          state.players.forEach((player: any, key: string) => {
-            if (key !== this.playerId) {
+          try {
+            state.players.forEach((player: any, key: string) => {
               // Add the player ID to the player data
               player.id = key;
-              this.emit("player-updated", player as PlayerData);
-            }
-          });
+              
+              if (key === this.playerId) {
+                // Emit our own position for reconciliation
+                this.emit("local-player-server-update", { 
+                  x: player.x, 
+                  y: player.y,
+                  health: player.health,
+                  isDead: player.isDead,
+                  respawnTimer: player.respawnTimer
+                });
+              } else {
+                // Emit other players' updates
+                this.emit("player-updated", player as PlayerData);
+              }
+            });
+          } catch (error) {
+            console.warn("Error processing player updates:", error);
+          }
         }
       });
 
@@ -132,16 +152,22 @@ export class NetworkManager extends Phaser.Events.EventEmitter {
   }
 
   private setupStateListeners(state: GameState): void {
+    // Track removed players to prevent updates after removal
+    const removedPlayers = new Set<string>();
+    
     // Listen for player updates
     state.players.onAdd = (player: any, key: string) => {
       console.log("Player joined:", key, player);
       // Add the player ID to the player data
       player.id = key;
+      // Clear from removed set if they're rejoining
+      removedPlayers.delete(key);
       this.emit("player-added", player as PlayerData);
     };
 
     state.players.onRemove = (player: PlayerData, key: string) => {
       console.log("Player left:", key);
+      removedPlayers.add(key);
       this.emit("player-removed", key);
     };
 

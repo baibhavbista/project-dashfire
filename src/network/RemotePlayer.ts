@@ -8,11 +8,28 @@ export class RemotePlayer {
   private healthBarBg?: Phaser.GameObjects.Rectangle;
   private scene: Phaser.Scene;
   private gun: Phaser.GameObjects.Rectangle;
+  private isDestroyed: boolean = false;
+  
+  // Interpolation state
+  private targetX: number;
+  private targetY: number;
+  private targetVelocityX: number = 0;
+  private targetVelocityY: number = 0;
+  private interpolationFactor: number = 0.2;
+  
+  // Dash trail properties
+  private dashTrails: Phaser.GameObjects.Image[] = [];
+  private readonly MAX_TRAILS: number = 8;
+  private wasDashing: boolean = false;
   
   constructor(scene: Phaser.Scene, id: string, x: number, y: number, team: "red" | "blue") {
     this.scene = scene;
     this.id = id;
     this.team = team;
+    
+    // Initialize position
+    this.targetX = x;
+    this.targetY = y;
     
     // Create sprite
     this.sprite = scene.physics.add.sprite(x, y, 'player');
@@ -63,26 +80,63 @@ export class RemotePlayer {
   }
   
   update(x: number, y: number, velocityX: number, velocityY: number, health: number, flipX: boolean, isDashing: boolean, isDead: boolean): void {
-    // Update position with interpolation
-    const lerpFactor = 0.2;
-    this.sprite.x = Phaser.Math.Linear(this.sprite.x, x, lerpFactor);
-    this.sprite.y = Phaser.Math.Linear(this.sprite.y, y, lerpFactor);
+    // Safety check - make sure player hasn't been destroyed
+    if (this.isDestroyed) {
+      return;
+    }
     
-    // Update velocity for smoother movement prediction
-    this.sprite.setVelocity(velocityX, velocityY);
+    // Safety check - make sure sprite still exists
+    if (!this.sprite || !this.sprite.body) {
+      console.warn(`RemotePlayer ${this.id} sprite destroyed, skipping update`);
+      return;
+    }
+    
+    // Update target position
+    this.targetX = x;
+    this.targetY = y;
+    this.targetVelocityX = velocityX;
+    this.targetVelocityY = velocityY;
+    
+    // Calculate distance to target
+    const dx = this.targetX - this.sprite.x;
+    const dy = this.targetY - this.sprite.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    // Adjust interpolation based on distance (faster catch-up for larger distances)
+    let lerpFactor = this.interpolationFactor;
+    if (distance > 100) {
+      lerpFactor = 0.5; // Faster interpolation for large distances
+    } else if (distance > 50) {
+      lerpFactor = 0.3;
+    }
+    
+    // Smooth interpolation with velocity prediction
+    const predictedX = this.targetX + (this.targetVelocityX * 0.05); // Predict 50ms ahead
+    const predictedY = this.targetY + (this.targetVelocityY * 0.05);
+    
+    this.sprite.x = Phaser.Math.Linear(this.sprite.x, predictedX, lerpFactor);
+    this.sprite.y = Phaser.Math.Linear(this.sprite.y, predictedY, lerpFactor);
+    
+    // Set velocity for physics interactions
+    this.sprite.setVelocity(
+      (this.targetX - this.sprite.x) * 10, // Smooth velocity based on position difference
+      (this.targetY - this.sprite.y) * 10
+    );
     
     // Update flip
     this.sprite.setFlipX(flipX);
     
     // Update gun position
-    const direction = flipX ? -1 : 1;
-    const gunX = this.sprite.x + (8 * direction);
-    const gunY = this.sprite.y;
-    this.gun.setPosition(gunX, gunY);
-    this.gun.setScale(direction, 1);
+    if (this.gun && this.gun.active) {
+      const direction = flipX ? -1 : 1;
+      const gunX = this.sprite.x + (8 * direction);
+      const gunY = this.sprite.y;
+      this.gun.setPosition(gunX, gunY);
+      this.gun.setScale(direction, 1);
+    }
     
     // Update health bar position
-    if (this.healthBarBg && this.healthBar) {
+    if (this.healthBarBg && this.healthBar && this.healthBarBg.active && this.healthBar.active) {
       const yOffset = -35;
       this.healthBarBg.setPosition(this.sprite.x, this.sprite.y + yOffset);
       this.healthBar.setPosition(this.sprite.x - 20, this.sprite.y + yOffset);
@@ -104,29 +158,96 @@ export class RemotePlayer {
     // Handle death state
     if (isDead) {
       this.sprite.setAlpha(0.3);
-      this.gun.setVisible(false);
-      this.healthBar?.setVisible(false);
-      this.healthBarBg?.setVisible(false);
+      if (this.gun && this.gun.active) this.gun.setVisible(false);
+      if (this.healthBar && this.healthBar.active) this.healthBar.setVisible(false);
+      if (this.healthBarBg && this.healthBarBg.active) this.healthBarBg.setVisible(false);
     } else {
       this.sprite.setAlpha(1);
-      this.gun.setVisible(true);
-      this.healthBar?.setVisible(true);
-      this.healthBarBg?.setVisible(true);
+      if (this.gun && this.gun.active) this.gun.setVisible(true);
+      if (this.healthBar && this.healthBar.active) this.healthBar.setVisible(true);
+      if (this.healthBarBg && this.healthBarBg.active) this.healthBarBg.setVisible(true);
     }
     
     // Update dash tint
     if (isDashing) {
       this.sprite.setTint(0x00FFFF);
+      
+      // Start creating dash trails if just started dashing
+      if (!this.wasDashing) {
+        this.wasDashing = true;
+      }
+      
+      // Create dash trails while dashing
+      if (Math.random() < 0.8) {
+        this.createDashTrail();
+      }
     } else {
       const teamColor = this.team === "red" ? 0xFF6B6B : 0x4ECDC4;
       this.sprite.setTint(teamColor);
+      this.wasDashing = false;
     }
   }
   
+  private createDashTrail(): void {
+    // Safety check
+    if (this.isDestroyed || !this.sprite || !this.sprite.active) return;
+    
+    // Remove oldest trail if at max
+    if (this.dashTrails.length >= this.MAX_TRAILS) {
+      const oldTrail = this.dashTrails.shift();
+      if (oldTrail) {
+        oldTrail.destroy();
+      }
+    }
+
+    // Create new trail
+    const trail = this.scene.add.image(this.sprite.x, this.sprite.y, 'player');
+    trail.setDisplaySize(32, 48);
+    trail.setTint(0x00FFFF);
+    trail.setAlpha(0.6);
+    trail.setFlipX(this.sprite.flipX);
+
+    this.dashTrails.push(trail);
+
+    // Fade out trail
+    this.scene.tweens.add({
+      targets: trail,
+      alpha: 0,
+      duration: 200,
+      onComplete: () => {
+        const index = this.dashTrails.indexOf(trail);
+        if (index > -1) {
+          this.dashTrails.splice(index, 1);
+        }
+        trail.destroy();
+      }
+    });
+  }
+  
   destroy(): void {
-    this.sprite.destroy();
-    this.healthBar?.destroy();
-    this.healthBarBg?.destroy();
-    this.gun.destroy();
+    // Mark as destroyed to prevent any further updates
+    this.isDestroyed = true;
+    
+    // Clean up dash trails
+    this.dashTrails.forEach(trail => {
+      if (trail && trail.active) {
+        trail.destroy();
+      }
+    });
+    this.dashTrails = [];
+    
+    // Safely destroy all game objects
+    if (this.sprite && this.sprite.active) {
+      this.sprite.destroy();
+    }
+    if (this.healthBar && this.healthBar.active) {
+      this.healthBar.destroy();
+    }
+    if (this.healthBarBg && this.healthBarBg.active) {
+      this.healthBarBg.destroy();
+    }
+    if (this.gun && this.gun.active) {
+      this.gun.destroy();
+    }
   }
 } 

@@ -143,7 +143,18 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
     });
 
     // Simple bullet collision (will be improved later)
+    const bulletsToRemove: number[] = [];
+    
     this.state.bullets.forEach((bullet, index) => {
+      // Update bullet position
+      bullet.x += bullet.velocityX * (deltaTime / 1000);
+      
+      // Remove bullets that are off-screen
+      if (bullet.x < -100 || bullet.x > 3100) {
+        bulletsToRemove.push(index);
+        return;
+      }
+      
       // Check collision with players
       this.state.players.forEach(player => {
         if (player.id !== bullet.ownerId && 
@@ -153,12 +164,20 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
             Math.abs(player.y - bullet.y) < 24) {
           
           // Hit detected
-          player.health -= 25;
+          player.health -= 10; // 10 damage per bullet
           
           if (player.health <= 0) {
             player.isDead = true;
             player.health = 0;
             player.respawnTimer = 3000; // 3 seconds
+            
+            // Broadcast kill event
+            this.broadcast("player-killed", {
+              killerId: bullet.ownerId,
+              victimId: player.id,
+              killerName: `Player ${bullet.ownerId.substring(0, 4)}`,
+              victimName: `Player ${player.id.substring(0, 4)}`
+            });
             
             // Update score
             if (bullet.ownerTeam === "red") {
@@ -179,10 +198,16 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
             }
           }
           
-          // Remove bullet
-          this.state.bullets.splice(index, 1);
+          // Mark bullet for removal
+          bulletsToRemove.push(index);
         }
       });
+    });
+    
+    // Remove bullets that hit or went off-screen
+    bulletsToRemove.sort((a, b) => b - a); // Sort in reverse order
+    bulletsToRemove.forEach(index => {
+      this.state.bullets.splice(index, 1);
     });
   }
 } 
