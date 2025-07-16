@@ -228,10 +228,10 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Jumping
+    // Jumping - only on fresh key press, not when held
     const canJump = playerBody.touching.down || this.coyoteTime > 0;
     
-    if (this.jumpKey?.isDown && canJump) {
+    if (this.jumpKey && Phaser.Input.Keyboard.JustDown(this.jumpKey) && canJump) {
       this.player.setVelocityY(-550);
       this.coyoteTime = 0; // Reset coyote time after jumping
       
@@ -256,27 +256,29 @@ export class GameScene extends Phaser.Scene {
       this.player.setVelocityY(Math.max(playerBody.velocity.y, 300));
     }
 
-    // Dynamic gravity based on jump phase
-    if (!playerBody.touching.down) {
-      // Check if fast falling
-      const isFastFalling = this.cursors?.down?.isDown && playerBody.velocity.y > 0;
-      
-      if (isFastFalling) {
-        // Fast fall - very high gravity
-        playerBody.setGravityY(1000);
-      } else if (playerBody.velocity.y < -50) {
-        // Ascending fast - normal gravity for quick rise
-        playerBody.setGravityY(450);
-      } else if (playerBody.velocity.y >= -50 && playerBody.velocity.y <= 30) {
-        // Hang time - slightly reduced gravity for brief float (less floaty)
-        playerBody.setGravityY(350);
+    // Dynamic gravity based on jump phase (skip if dashing)
+    if (!this.isDashing) {
+      if (!playerBody.touching.down) {
+        // Check if fast falling
+        const isFastFalling = this.cursors?.down?.isDown && playerBody.velocity.y > 0;
+        
+        if (isFastFalling) {
+          // Fast fall - very high gravity
+          playerBody.setGravityY(1000);
+        } else if (playerBody.velocity.y < -50) {
+          // Ascending fast - normal gravity for quick rise
+          playerBody.setGravityY(450);
+        } else if (playerBody.velocity.y >= -50 && playerBody.velocity.y <= 30) {
+          // Hang time - slightly reduced gravity for brief float (less floaty)
+          playerBody.setGravityY(350);
+        } else {
+          // Falling fast - high gravity for quick descent
+          playerBody.setGravityY(900);
+        }
       } else {
-        // Falling fast - high gravity for quick descent
-        playerBody.setGravityY(900);
+        // On ground - reset gravity
+        playerBody.setGravityY(0);
       }
-    } else {
-      // On ground - reset gravity
-      playerBody.setGravityY(0);
     }
 
     // Add some bounce and feel
@@ -338,7 +340,7 @@ export class GameScene extends Phaser.Scene {
     
     // Disable gravity during dash
     const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
-    playerBody.setGravityY(0);
+    playerBody.allowGravity = false;
     
     // Set dash state
     this.isDashing = true;
@@ -360,10 +362,8 @@ export class GameScene extends Phaser.Scene {
       this.player.setVelocity(currentVelX * 0.7, currentVelY * 0.7);
       
       // Re-enable gravity after dash
-      if (!body.touching.down) {
-        // Set appropriate gravity based on current state
-        body.setGravityY(400);
-      }
+      body.allowGravity = true;
+      // The dynamic gravity system will take over in the next update cycle
     });
 
     // Create initial dash trail
