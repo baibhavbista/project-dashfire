@@ -54,7 +54,7 @@ export class GameScene extends Phaser.Scene {
     this.player.setCollideWorldBounds(true); // Keep player within world bounds
 
     // Player physics
-    this.player.body!.setGravityY(0);
+    (this.player.body as Phaser.Physics.Arcade.Body).setGravityY(0);
     this.physics.add.collider(this.player, this.platforms);
 
     // Camera setup - follow player but constrain to world bounds
@@ -67,7 +67,11 @@ export class GameScene extends Phaser.Scene {
 
     // Create input handlers
     this.cursors = this.input.keyboard!.createCursorKeys();
-    this.wasd = this.input.keyboard!.addKeys('A') as any;
+    this.wasd = this.input.keyboard!.addKeys('A') as {
+      down: Phaser.Input.Keyboard.Key;
+      left: Phaser.Input.Keyboard.Key;
+      right: Phaser.Input.Keyboard.Key;
+    };
     this.jumpKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.D); // D key for jump
     this.dashKey = this.input.keyboard!.addKey(Phaser.Input.Keyboard.KeyCodes.S); // S key for dash
 
@@ -166,9 +170,7 @@ export class GameScene extends Phaser.Scene {
     const maxSpeed = 300;
     const acceleration = 1200; // High acceleration for snappy movement
     const friction = 800; // Quick deceleration when not moving
-    const jumpPower = 450; // Adjusted for 3x height (48px * 3 = 144px)
     const dashPower = 800; // 2x more powerful
-    const dashDuration = 150; // ms
     
     const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
     const currentVelX = playerBody.velocity.x;
@@ -183,8 +185,8 @@ export class GameScene extends Phaser.Scene {
       this.canDash = true;
     }
 
-    // Handle dashing
-    if (this.dashKey?.isDown && this.canDash && this.dashCooldown <= 0 && !this.isDashing && !playerBody.touching.down) {
+    // Handle dashing - only on fresh key press, not when held
+    if (Phaser.Input.Keyboard.JustDown(this.dashKey) && this.canDash && this.dashCooldown <= 0 && !this.isDashing && !playerBody.touching.down) {
       this.performDash(dashPower);
     }
 
@@ -254,16 +256,16 @@ export class GameScene extends Phaser.Scene {
       
       if (isFastFalling) {
         // Fast fall - very high gravity
-        playerBody.setGravityY(900);
-      } else if (playerBody.velocity.y < -80) {
+        playerBody.setGravityY(1000);
+      } else if (playerBody.velocity.y < -50) {
         // Ascending fast - normal gravity for quick rise
-        playerBody.setGravityY(400);
-      } else if (playerBody.velocity.y >= -80 && playerBody.velocity.y <= 80) {
-        // Hang time - reduced gravity for brief float
-        playerBody.setGravityY(200);
+        playerBody.setGravityY(450);
+      } else if (playerBody.velocity.y >= -50 && playerBody.velocity.y <= 30) {
+        // Hang time - slightly reduced gravity for brief float (less floaty)
+        playerBody.setGravityY(350);
       } else {
         // Falling fast - high gravity for quick descent
-        playerBody.setGravityY(800);
+        playerBody.setGravityY(900);
       }
     } else {
       // On ground - reset gravity
