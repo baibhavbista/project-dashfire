@@ -1,21 +1,23 @@
 import Phaser from 'phaser';
+import { WeaponSystem } from './WeaponSystem';
+import { Bullet } from './BulletPool';
+import { SoundManager } from './SoundManager';
 
 // Custom interfaces for better type safety
 interface PlayerSprite extends Phaser.Physics.Arcade.Sprite {
   dustParticles?: Phaser.GameObjects.Particles.ParticleEmitter;
 }
 
-interface WASDKeys {
-  left: Phaser.Input.Keyboard.Key;
-}
-
 export class GameScene extends Phaser.Scene {
   private player!: PlayerSprite;
   private platforms!: Phaser.Physics.Arcade.StaticGroup;
   private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-  private wasd!: WASDKeys;
   private jumpKey!: Phaser.Input.Keyboard.Key; // This will be D key
   private dashKey!: Phaser.Input.Keyboard.Key; // This will be S key
+  private shootKey!: Phaser.Input.Keyboard.Key; // This will be Space key
+  private shootKeyAlt!: Phaser.Input.Keyboard.Key; // This will be A key
+  private weaponSystem!: WeaponSystem;
+  private soundManager!: SoundManager;
   private coyoteTime: number = 0;
   private readonly COYOTE_TIME_MS: number = 150; // 150ms window after leaving platform
   private canDash: boolean = true;
@@ -43,9 +45,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   preload() {
-    // Create colored rectangles for platforms and player
+    // Create colored rectangles for platforms, player and bullets
     this.load.image('ground', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAI9jzgwTQAAAABJRU5ErkJggg==');
     this.load.image('player', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAI9jzgwTQAAAABJRU5ErkJggg==');
+    this.load.image('bullet', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAI9jzgwTQAAAABJRU5ErkJggg==');
+    
+    // Load generated sounds
+    const sounds = SoundManager.generateSoundDataURIs();
+    this.load.audio('jump', sounds.jump);
+    this.load.audio('dash', sounds.dash);
+    this.load.audio('shoot', sounds.shoot);
   }
 
   create() {
@@ -89,11 +98,23 @@ export class GameScene extends Phaser.Scene {
     }
     
     this.cursors = this.input.keyboard.createCursorKeys();
-    this.wasd = {
-      left: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A)
-    };
     this.jumpKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D); // D key for jump
     this.dashKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S); // S key for dash
+    this.shootKey = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.SPACE); // Space key for shoot
+    this.shootKeyAlt = this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A); // A key for shoot (alternative)
+
+    // Initialize weapon system
+    this.weaponSystem = new WeaponSystem(this, this.player);
+    
+    // Initialize sound manager
+    this.soundManager = new SoundManager(this);
+    
+    // Set up bullet-platform collisions
+    const bullets = this.weaponSystem.getBulletPool().getBullets();
+    this.physics.add.collider(bullets, this.platforms, (bulletObj) => {
+      const bullet = bulletObj as Bullet;
+      this.weaponSystem.getBulletPool().deactivateBullet(bullet);
+    });
 
     // Add some visual flair
     this.createBackground();
@@ -194,6 +215,16 @@ export class GameScene extends Phaser.Scene {
     
     const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
     const currentVelX = playerBody.velocity.x;
+
+    // Update weapon system
+    this.weaponSystem.update(this.game.loop.delta);
+
+    // Handle shooting (either Space or A key)
+    if (Phaser.Input.Keyboard.JustDown(this.shootKey) || Phaser.Input.Keyboard.JustDown(this.shootKeyAlt)) {
+      if (this.weaponSystem.shoot(this.isDashing)) {
+        this.soundManager.playShoot();
+      }
+    }
 
     // Update dash cooldown
     if (this.dashCooldown > 0) {
@@ -402,6 +433,9 @@ export class GameScene extends Phaser.Scene {
     this.isDashing = true;
     this.canDash = false;
     this.dashCooldown = 100; // Brief cooldown
+
+    // Play dash sound
+    this.soundManager.playDash();
 
     // Change player color during dash
     this.player.setTint(0x00FFFF); // Cyan color during dash
