@@ -1,4 +1,4 @@
-# Platformer Arena
+# Project SlingShot (currently just a platformer)
 
 A Celeste-inspired 2D platformer game built with Phaser 3, React, and TypeScript. Features precise movement mechanics, air dashing, and a sprawling arena to explore.
 
