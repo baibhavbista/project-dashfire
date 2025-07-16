@@ -25,6 +25,19 @@ export class GameScene extends Phaser.Scene {
   private dashTrails: Phaser.GameObjects.Image[] = [];
   private readonly MAX_TRAILS: number = 8;
   
+  // Dash input buffering
+  private dashBuffering: boolean = false;
+  private dashBufferTime: number = 0;
+  private readonly DASH_BUFFER_WINDOW_MS: number = 75; // 75ms window to input direction
+  
+  // Dash direction tracking
+  private initialDashDirections = {
+    left: false,
+    right: false,
+    up: false,
+    down: false
+  };
+
   constructor() {
     super({ key: 'GameScene' });
   }
@@ -190,16 +203,47 @@ export class GameScene extends Phaser.Scene {
     // Reset dash ability when touching ground
     if (playerBody.touching.down) {
       this.canDash = true;
+      // Cancel dash buffer if player lands
+      if (this.dashBuffering) {
+        this.dashBuffering = false;
+        this.dashBufferTime = 0;
+      }
     }
 
-    // Handle dashing - only on fresh key press, not when held
-    if (Phaser.Input.Keyboard.JustDown(this.dashKey) && this.canDash && this.dashCooldown <= 0 && !this.isDashing && !playerBody.touching.down) {
-      this.performDash(dashPower);
+    // Handle dash buffering
+    if (this.dashBuffering) {
+      this.dashBufferTime += this.game.loop.delta;
+      
+      // Execute dash after buffer window
+      if (this.dashBufferTime >= this.DASH_BUFFER_WINDOW_MS) {
+        this.dashBuffering = false;
+        this.dashBufferTime = 0;
+        this.performDash(dashPower);
+      }
+    } else {
+      // Start dash buffer on fresh key press
+      if (Phaser.Input.Keyboard.JustDown(this.dashKey) && this.canDash && this.dashCooldown <= 0 && !this.isDashing && !playerBody.touching.down) {
+        this.dashBuffering = true;
+        this.dashBufferTime = 0;
+      }
     }
 
-    // Skip normal movement during dash
+    // Handle dash
     if (this.isDashing) {
-      this.updateDashTrails();
+      // Check if player is still holding at least one initial direction
+      const stillHoldingLeft = this.initialDashDirections.left && (this.cursors?.left?.isDown || this.wasd?.left?.isDown);
+      const stillHoldingRight = this.initialDashDirections.right && this.cursors?.right?.isDown;
+      const stillHoldingUp = this.initialDashDirections.up && this.cursors?.up?.isDown;
+      const stillHoldingDown = this.initialDashDirections.down && this.cursors?.down?.isDown;
+      
+      const stillHoldingAnyDirection = stillHoldingLeft || stillHoldingRight || stillHoldingUp || stillHoldingDown;
+      
+      if (!stillHoldingAnyDirection) {
+        // Cancel dash early
+        this.endDash();
+      } else {
+        this.updateDashTrails();
+      }
       return;
     }
 
@@ -310,22 +354,34 @@ export class GameScene extends Phaser.Scene {
     let dashX = 0;
     let dashY = 0;
 
-    if (this.cursors?.left?.isDown || this.wasd?.left?.isDown) {
+    // Store initial dash directions
+    this.initialDashDirections.left = !!(this.cursors?.left?.isDown || this.wasd?.left?.isDown);
+    this.initialDashDirections.right = !!this.cursors?.right?.isDown;
+    this.initialDashDirections.up = !!this.cursors?.up?.isDown;
+    this.initialDashDirections.down = !!this.cursors?.down?.isDown;
+
+    if (this.initialDashDirections.left) {
       dashX = -1;
     }
-    if (this.cursors?.right?.isDown) {
+    if (this.initialDashDirections.right) {
       dashX = 1;
     }
-    if (this.cursors?.up?.isDown) {
+    if (this.initialDashDirections.up) {
       dashY = -1;
     }
-    if (this.cursors?.down?.isDown) {
+    if (this.initialDashDirections.down) {
       dashY = 1;
     }
 
     // Default to horizontal dash in facing direction if no input
     if (dashX === 0 && dashY === 0) {
       dashX = this.player.flipX ? -1 : 1;
+      // Update the stored direction for default dash
+      if (this.player.flipX) {
+        this.initialDashDirections.left = true;
+      } else {
+        this.initialDashDirections.right = true;
+      }
     }
 
     // Normalize diagonal dashes
@@ -350,24 +406,36 @@ export class GameScene extends Phaser.Scene {
     // Change player color during dash
     this.player.setTint(0x00FFFF); // Cyan color during dash
 
-    // End dash after duration
+    // End dash after duration (if not cancelled early)
     this.time.delayedCall(150, () => {
-      this.isDashing = false;
-      this.player.setTint(0xFF6B6B); // Return to normal color
-      
-      // Reduce velocity slightly after dash
-      const body = this.player.body as Phaser.Physics.Arcade.Body;
-      const currentVelX = body.velocity.x;
-      const currentVelY = body.velocity.y;
-      this.player.setVelocity(currentVelX * 0.7, currentVelY * 0.7);
-      
-      // Re-enable gravity after dash
-      body.allowGravity = true;
-      // The dynamic gravity system will take over in the next update cycle
+      if (this.isDashing) {
+        this.endDash();
+      }
     });
 
     // Create initial dash trail
     this.createDashTrail();
+  }
+
+  endDash() {
+    this.isDashing = false;
+    this.player.setTint(0xFF6B6B); // Return to normal color
+    
+    // Reduce velocity slightly after dash
+    const body = this.player.body as Phaser.Physics.Arcade.Body;
+    const currentVelX = body.velocity.x;
+    const currentVelY = body.velocity.y;
+    this.player.setVelocity(currentVelX * 0.7, currentVelY * 0.7);
+    
+    // Re-enable gravity after dash
+    body.allowGravity = true;
+    // The dynamic gravity system will take over in the next update cycle
+    
+    // Reset initial dash directions
+    this.initialDashDirections.left = false;
+    this.initialDashDirections.right = false;
+    this.initialDashDirections.up = false;
+    this.initialDashDirections.down = false;
   }
 
   createDashTrail() {
