@@ -231,7 +231,7 @@ export class GameScene extends Phaser.Scene {
     // Handle dash
     if (this.isDashing) {
       // Check if player is still holding at least one initial direction
-      const stillHoldingLeft = this.initialDashDirections.left && (this.cursors?.left?.isDown || this.wasd?.left?.isDown);
+      const stillHoldingLeft = this.initialDashDirections.left && this.cursors?.left?.isDown;
       const stillHoldingRight = this.initialDashDirections.right && this.cursors?.right?.isDown;
       const stillHoldingUp = this.initialDashDirections.up && this.cursors?.up?.isDown;
       const stillHoldingDown = this.initialDashDirections.down && this.cursors?.down?.isDown;
@@ -248,7 +248,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Horizontal movement
-    if (this.cursors?.left?.isDown || this.wasd?.left?.isDown) {
+    if (this.cursors?.left?.isDown) {
       // Accelerate to max speed quickly
       const newVelX = Math.max(currentVelX - acceleration * (1/60), -maxSpeed);
       this.player.setVelocityX(newVelX);
@@ -355,7 +355,7 @@ export class GameScene extends Phaser.Scene {
     let dashY = 0;
 
     // Store initial dash directions
-    this.initialDashDirections.left = !!(this.cursors?.left?.isDown || this.wasd?.left?.isDown);
+    this.initialDashDirections.left = !!this.cursors?.left?.isDown;
     this.initialDashDirections.right = !!this.cursors?.right?.isDown;
     this.initialDashDirections.up = !!this.cursors?.up?.isDown;
     this.initialDashDirections.down = !!this.cursors?.down?.isDown;

@@ -43,7 +43,7 @@ function App() {
         </h1>
         <div ref={mountRef} className="border-2 border-gray-300 rounded" />
         <div className="mt-4 text-sm text-gray-600 text-center">
-          <p><strong>Controls:</strong> Arrow Keys or A to move, D to jump, S to dash (midair only)</p>
+          <p><strong>Controls:</strong> Arrow Keys to move, D to jump, S to dash (midair only)</p>
           <p>Explore the arena and prepare for battle!</p>
         </div>
       </div>
