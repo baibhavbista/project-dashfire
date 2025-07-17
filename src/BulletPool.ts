@@ -20,7 +20,7 @@ export class BulletPool {
   private createPool(): void {
     for (let i = 0; i < this.POOL_SIZE; i++) {
       // Create a simple rectangle for the bullet
-      const bullet = this.scene.physics.add.sprite(0, 0, 'bullet') as Bullet;
+      const bullet = this.scene.physics.add.sprite(0, 0, 'white-rect') as Bullet;
       
       // Set bullet appearance
       bullet.setDisplaySize(this.BULLET_WIDTH, this.BULLET_HEIGHT);
@@ -58,7 +58,7 @@ export class BulletPool {
       bullet.setTint(teamColor);
     } else {
       // Default bright red for single player
-      bullet.setTint(0xFF6B6B);
+      bullet.setTint(0xFF6B6B); // Red glow color
     }
     
     // Set velocity based on direction

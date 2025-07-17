@@ -149,11 +149,21 @@ Text:            #FFFFFF (Pure white for contrast)
 - [x] Dash trails using team glow colors
 - [x] Removed cyan dash tint (keeping team colors for cleaner aesthetic)
 
-### Phase 2: Character Personality (Day 2)
-- [ ] Movement animations (lean, squash/stretch)
-- [ ] Direction indicator
-- [ ] Breathing idle animation
-- [ ] Team color variations
+### Phase 2: Character Personality (Day 2) ✅ COMPLETE
+- [x] Movement animations (lean, squash/stretch)
+  - [x] 5° lean when moving horizontally
+  - [x] Vertical stretch (0.9x width, 1.1x height) when jumping
+  - [x] Vertical compress (1.1x width, 0.9x height) when falling
+  - [x] Landing squash effect with bounce-back animation
+- [x] Direction indicator
+  - [x] Triangle above player pointing in movement direction
+  - [x] Team colored with fade when stationary
+  - [x] Glows and scales during dash
+- [x] Breathing idle animation
+  - [x] Subtle scale animation (0.98-1.02) when stationary
+  - [x] Stops when moving or dashing
+- [x] Applied animations to both local and remote players
+- [x] Clean transitions between animation states
 
 ### Phase 3: Effects & Polish (Day 3)
 - [ ] Particle systems

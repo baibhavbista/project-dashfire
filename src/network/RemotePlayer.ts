@@ -19,9 +19,16 @@ export class RemotePlayer {
   private interpolationFactor: number = 0.2;
   
   // Dash trail properties
-  private dashTrails: Phaser.GameObjects.Image[] = [];
+  private dashTrails: Phaser.GameObjects.Sprite[] = [];
   private readonly MAX_TRAILS: number = 8;
   private wasDashing: boolean = false;
+  
+  // Animation properties
+  private directionIndicator?: Phaser.GameObjects.Triangle;
+
+  private lastVelocityX: number = 0;
+  private isGrounded: boolean = false;
+  private wasGrounded: boolean = false;
   
   constructor(scene: Phaser.Scene, id: string, x: number, y: number, team: "red" | "blue", name?: string) {
     this.scene = scene;
@@ -33,12 +40,16 @@ export class RemotePlayer {
     this.targetY = y;
     
     // Create sprite
-    this.sprite = scene.physics.add.sprite(x, y, 'player');
-    this.sprite.setDisplaySize(32, 48);
+    this.sprite = scene.physics.add.sprite(x, y, 'white-rect');
+    this.sprite.setDisplaySize(32, 48); // Back to normal size
+    this.sprite.setOrigin(0.5, 0.5); // Center origin for proper scaling
     
     // Set team color - Thomas Was Alone vibrant colors
     const teamColor = team === "red" ? 0xE74C3C : 0x3498DB;
     this.sprite.setTint(teamColor);
+    
+    // Ensure normal scale at start
+    this.sprite.setScale(1, 1);
     
     // Disable physics for remote players (they're controlled by server)
     const body = this.sprite.body as Phaser.Physics.Arcade.Body;
@@ -60,6 +71,20 @@ export class RemotePlayer {
       strokeThickness: 2
     });
     this.nameText.setOrigin(0.5);
+    
+    // Create direction indicator
+    this.directionIndicator = scene.add.triangle(
+      x, 
+      y - 35, 
+      0, 5,    // bottom left
+      5, 0,    // top
+      10, 5,   // bottom right
+      teamColor,
+      0.8
+    );
+    this.directionIndicator.setOrigin(0.5);
+    
+
   }
   
   private createHealthBar(): void {
@@ -177,12 +202,14 @@ export class RemotePlayer {
       if (this.healthBar && this.healthBar.active) this.healthBar.setVisible(false);
       if (this.healthBarBg && this.healthBarBg.active) this.healthBarBg.setVisible(false);
       if (this.nameText && this.nameText.active) this.nameText.setVisible(false);
+      if (this.directionIndicator && this.directionIndicator.active) this.directionIndicator.setVisible(false);
     } else {
       this.sprite.setAlpha(1);
       if (this.gun && this.gun.active) this.gun.setVisible(true);
       if (this.healthBar && this.healthBar.active) this.healthBar.setVisible(true);
       if (this.healthBarBg && this.healthBarBg.active) this.healthBarBg.setVisible(true);
       if (this.nameText && this.nameText.active) this.nameText.setVisible(true);
+      if (this.directionIndicator && this.directionIndicator.active) this.directionIndicator.setVisible(true);
     }
     
     // Update dash state
@@ -205,6 +232,9 @@ export class RemotePlayer {
       this.sprite.setTint(teamColor);
       this.wasDashing = false;
     }
+    
+    // Update character animations
+    this.updateAnimations();
   }
   
   private createDashTrail(): void {
@@ -220,8 +250,8 @@ export class RemotePlayer {
     }
 
     // Create new trail
-    const trail = this.scene.add.image(this.sprite.x, this.sprite.y, 'player');
-    trail.setDisplaySize(32, 48);
+    const trail = this.scene.add.sprite(this.sprite.x, this.sprite.y, 'white-rect');
+    trail.setDisplaySize(32, 48); // Back to normal size
     
     // Use team glow colors for dash trail
     const trailColor = this.team === "red" ? 0xFF6B6B : 0x5DADE2;
@@ -246,9 +276,43 @@ export class RemotePlayer {
     });
   }
   
+  // Animation methods
+  
+  updateAnimations(): void {
+    // Movement lean
+    if (Math.abs(this.targetVelocityX) > 10) {
+      const leanAngle = Phaser.Math.Clamp(this.targetVelocityX * 0.015, -5, 5);
+      this.sprite.setRotation(Phaser.Math.DegToRad(leanAngle));
+    } else {
+      // Return to upright when idle
+      this.sprite.setRotation(0);
+    }
+    
+    // Update direction indicator
+    if (this.directionIndicator && this.directionIndicator.active) {
+      // Position above sprite
+      this.directionIndicator.setPosition(this.sprite.x, this.sprite.y - 35);
+      
+      // Point in movement direction
+      if (Math.abs(this.targetVelocityX) > 10) {
+        this.directionIndicator.setAlpha(0.8);
+        const angle = this.targetVelocityX > 0 ? 90 : -90;
+        this.directionIndicator.setRotation(Phaser.Math.DegToRad(angle));
+        this.lastVelocityX = this.targetVelocityX;
+      } else {
+        // Fade when stationary
+        this.directionIndicator.setAlpha(0.3);
+        const angle = this.lastVelocityX > 0 ? 90 : -90;
+        this.directionIndicator.setRotation(Phaser.Math.DegToRad(angle));
+      }
+    }
+  }
+  
   destroy(): void {
     // Mark as destroyed to prevent any further updates
     this.isDestroyed = true;
+    
+    // Stop animations
     
     // Clean up dash trails
     this.dashTrails.forEach(trail => {
@@ -273,6 +337,9 @@ export class RemotePlayer {
     }
     if (this.nameText && this.nameText.active) {
       this.nameText.destroy();
+    }
+    if (this.directionIndicator && this.directionIndicator.active) {
+      this.directionIndicator.destroy();
     }
   }
 } 

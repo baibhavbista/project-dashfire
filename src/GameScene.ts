@@ -6,6 +6,14 @@ import { RemotePlayer } from './network/RemotePlayer';
 import { NetworkManager, PlayerData, BulletData } from './network/NetworkManager';
 import { ARENA_WIDTH, ARENA_HEIGHT, MAIN_PLATFORM, ELEVATED_PLATFORMS } from '../shared/WorldGeometry';
 
+// Thomas Was Alone color constants
+const TEAM_COLORS = {
+  RED: 0xE74C3C,
+  BLUE: 0x3498DB,
+  RED_GLOW: 0xFF6B6B,
+  BLUE_GLOW: 0x5DADE2
+} as const;
+
 // Custom interfaces for better type safety
 interface PlayerSprite extends Phaser.Physics.Arcade.Sprite {
   dustParticles?: Phaser.GameObjects.Particles.ParticleEmitter;
@@ -32,7 +40,7 @@ export class GameScene extends Phaser.Scene {
   private isDashing: boolean = false;
   private dashCooldown: number = 0;
   private readonly DASH_COOLDOWN_MS: number = 300; // Longer cooldown for network sync
-  private dashTrails: Phaser.GameObjects.Image[] = [];
+  private dashTrails: Phaser.GameObjects.Sprite[] = [];
   private readonly MAX_TRAILS: number = 8;
   
   // Dash input buffering
@@ -70,19 +78,27 @@ export class GameScene extends Phaser.Scene {
   private scoreText?: Phaser.GameObjects.Text;
   private redScore: number = 0;
   private blueScore: number = 0;
+  
+  // Character animations
+  private directionIndicator?: Phaser.GameObjects.Triangle;
+
+  private lastVelocityX: number = 0;
+  private isGrounded: boolean = false;
+  private wasGrounded: boolean = false;
+  private landingSquashTween?: Phaser.Tweens.Tween;
+  
+  // Jump launch animation
+  private jumpLaunchTime: number = 0;
+  private isJumpLaunching: boolean = false;
+  private readonly JUMP_LAUNCH_DURATION: number = 150; // 150ms stretch duration
 
   constructor() {
     super({ key: 'GameScene' });
   }
 
   preload() {
-    // Create white pixel data URI for tintable sprites
-    const whitePixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==';
-    
-    // Use white pixels so we can tint them with team colors
-    this.load.image('ground', whitePixel);
-    this.load.image('player', whitePixel);
-    this.load.image('bullet', whitePixel);
+    // Create white textures for sprites
+    this.load.image('white-pixel', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==');
     
     // Load generated sounds
     const sounds = SoundManager.generateSoundDataURIs();
@@ -94,6 +110,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   create() {
+    // Create white texture programmatically to ensure it works
+    const graphics = this.add.graphics();
+    graphics.fillStyle(0xFFFFFF, 1);
+    graphics.fillRect(0, 0, 1, 1);
+    graphics.generateTexture('white-rect', 1, 1);
+    graphics.destroy();
+    
     // Store reference to this scene for external access
     (this.game as Phaser.Game & { gameScene?: GameScene }).gameScene = this;
     
@@ -128,23 +151,42 @@ export class GameScene extends Phaser.Scene {
     // Create multiple elevated platforms for jumping
     this.createElevatedPlatforms();
 
-    // Create player - clean rectangle design
-    this.player = this.physics.add.sprite(100, 500, 'player');
-    this.player.setDisplaySize(32, 48); // Golden ratio-ish dimensions
+    // Create player - clean rectangle design with guaranteed visible texture
     
-    // Set initial color - will be overridden by team color in multiplayer
-    const defaultColor = this.isMultiplayer ? 0xCCCCCC : 0xE74C3C; // Gray until team assigned, or red for single player
-    this.player.setTint(defaultColor);
+    // Create a solid red texture programmatically to ensure visibility
+    const redGraphics = this.add.graphics();
+    redGraphics.fillStyle(TEAM_COLORS.RED, 1);
+    redGraphics.fillRect(0, 0, 32, 48); // Back to normal size
+    redGraphics.generateTexture('red-player', 32, 48);
+    redGraphics.destroy();
     
-    // Add subtle outline for visibility (doesn't work on sprites, but keeping for future shader implementation)
-    // For now the white base + tint provides good visibility
+    this.player = this.physics.add.sprite(100, 500, 'red-player');
+    this.player.setOrigin(0.5, 0.5); // Center origin for proper scaling
+    
+    // Ensure normal scale at start
+    this.player.setScale(1, 1);
     
     this.player.setBounce(0.1);
     this.player.setCollideWorldBounds(true); // Keep player within world bounds
 
     // Player physics
     (this.player.body as Phaser.Physics.Arcade.Body).setGravityY(0);
+    (this.player.body as Phaser.Physics.Arcade.Body).setSize(32, 48); // Back to normal size
     this.physics.add.collider(this.player, this.platforms);
+    
+    // Create direction indicator (triangle above player)
+    this.directionIndicator = this.add.triangle(
+      this.player.x, 
+      this.player.y - 35, 
+      0, 5,    // bottom left
+      5, 0,    // top
+      10, 5,   // bottom right
+      0xFFFFFF,
+      0.8
+    );
+    this.directionIndicator.setOrigin(0.5);
+    
+
 
     // Camera setup - follow player but constrain to world bounds
     this.cameras.main.setBounds(0, 0, arenaWidth, ARENA_HEIGHT);
@@ -266,7 +308,7 @@ export class GameScene extends Phaser.Scene {
 
   createParticles() {
     // Create dust particles for landing effects - subtle and matching platform color
-    const particles = this.add.particles(0, 0, 'ground', {
+    const particles = this.add.particles(0, 0, 'white-rect', {
       scale: { start: 0.05, end: 0.15 },
       speed: { min: 30, max: 60 },
       lifespan: 400,
@@ -289,9 +331,23 @@ export class GameScene extends Phaser.Scene {
     this.networkManager.on("team-assigned", (data: { playerId: string; team: "red" | "blue"; roomId: string }) => {
       this.localPlayerId = data.playerId;
       
-      // Update player color based on team - using Thomas Was Alone vibrant colors
-      const teamColor = data.team === "red" ? 0xE74C3C : 0x3498DB;
-      this.player.setTint(teamColor);
+      // Create team-specific texture and update player
+      const teamColor = data.team === "red" ? TEAM_COLORS.RED : TEAM_COLORS.BLUE;
+      
+      // Create team-colored texture
+      const teamGraphics = this.add.graphics();
+      teamGraphics.fillStyle(teamColor, 1);
+      teamGraphics.fillRect(0, 0, 32, 48); // Back to normal size
+      teamGraphics.generateTexture(`${data.team}-player`, 32, 48);
+      teamGraphics.destroy();
+      
+      // Update player texture
+      this.player.setTexture(`${data.team}-player`);
+      
+      // Update direction indicator color (if enabled)
+      if (this.directionIndicator) {
+        this.directionIndicator.setFillStyle(teamColor, 0.8);
+      }
       
       // Teleport to team spawn point
       if (data.team === "red") {
@@ -355,7 +411,7 @@ export class GameScene extends Phaser.Scene {
       // Only render bullets from other players
       if (bullet.ownerId !== this.localPlayerId) {
         // Create visual bullet with team color
-        const bulletColor = bullet.ownerTeam === "blue" ? 0x5DADE2 : 0xFF6B6B;
+        const bulletColor = bullet.ownerTeam === "blue" ? TEAM_COLORS.BLUE_GLOW : TEAM_COLORS.RED_GLOW;
         const bulletSprite = this.add.rectangle(bullet.x, bullet.y, 10, 6, bulletColor);
         
         // Animate bullet
@@ -756,8 +812,8 @@ export class GameScene extends Phaser.Scene {
     this.isMultiplayer = false;
     this.localPlayerId = undefined;
     
-    // Reset player color
-    this.player.setTint(0xFF6B6B);
+    // Reset player to default red texture
+    this.player.setTexture('red-player');
     
     // Destroy multiplayer UI
     this.multiplayerUI?.destroy();
@@ -803,10 +859,10 @@ export class GameScene extends Phaser.Scene {
     // Handle shooting (either Space or A key)
     if (Phaser.Input.Keyboard.JustDown(this.shootKey) || Phaser.Input.Keyboard.JustDown(this.shootKeyAlt)) {
       // Get team color for bullets
-      let bulletColor = 0xFF6B6B; // Default red
+      let bulletColor: number = TEAM_COLORS.RED_GLOW; // Default red
       if (this.isMultiplayer && this.networkManager) {
         const team = this.networkManager.getPlayerTeam();
-        bulletColor = team === "blue" ? 0x5DADE2 : 0xFF6B6B; // Bright team colors for bullets
+        bulletColor = team === "blue" ? TEAM_COLORS.BLUE_GLOW : TEAM_COLORS.RED_GLOW; // Bright team colors for bullets
       }
       
       if (this.weaponSystem.shoot(this.isDashing, bulletColor)) {
@@ -1039,6 +1095,9 @@ export class GameScene extends Phaser.Scene {
         ].join('\n'));
       }
     }
+
+    // Update character animations
+    this.updateCharacterAnimations(); // Re-enabled now that visibility is fixed
   }
 
   performDash(dashPower: number) {
@@ -1130,14 +1189,8 @@ export class GameScene extends Phaser.Scene {
       this.networkManager.sendDash(false);
     }
     
-    // Ensure correct team color is maintained
-    if (this.isMultiplayer && this.networkManager) {
-      const team = this.networkManager.getPlayerTeam();
-      const teamColor = team === "red" ? 0xE74C3C : 0x3498DB;
-      this.player.setTint(teamColor);
-    } else {
-      this.player.setTint(0xE74C3C); // Default red color
-    }
+    // No need to set tint - texture already has correct color
+    // REMOVED: Team color tinting since we use direct colored textures
     
     // Reduce velocity slightly after dash
     const body = this.player.body as Phaser.Physics.Arcade.Body;
@@ -1148,6 +1201,13 @@ export class GameScene extends Phaser.Scene {
     // Re-enable gravity after dash
     body.allowGravity = true;
     // The dynamic gravity system will take over in the next update cycle
+    
+    // Reset scale and rotation after dash
+    this.player.setScale(1, 1);
+    this.player.setRotation(0);
+    
+    // Reset jump launch state
+    this.isJumpLaunching = false;
     
     // Reset initial dash directions
     this.initialDashDirections.left = false;
@@ -1165,18 +1225,9 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Create new trail
-    const trail = this.add.image(this.player.x, this.player.y, 'player');
+    // Create new trail using the same texture as the player
+    const trail = this.add.sprite(this.player.x, this.player.y, this.player.texture.key);
     trail.setDisplaySize(32, 48);
-    
-    // Use team color for dash trail with glow effect
-    let trailColor = 0xE74C3C; // Default to red
-    if (this.isMultiplayer && this.networkManager) {
-      const team = this.networkManager.getPlayerTeam();
-      trailColor = team === "blue" ? 0x5DADE2 : 0xFF6B6B; // Glow colors from design doc
-    }
-    
-    trail.setTint(trailColor);
     trail.setAlpha(0.6);
     trail.setFlipX(this.player.flipX);
 
@@ -1235,5 +1286,119 @@ export class GameScene extends Phaser.Scene {
       this.predictionError.x = 0;
       this.predictionError.y = 0;
     }
+  }
+  
+  // Character animation methods
+
+  
+  updateCharacterAnimations() {
+    // Safety check
+    if (!this.player || !this.player.body || !this.player.active) {
+      return;
+    }
+    
+    const body = this.player.body as Phaser.Physics.Arcade.Body;
+    const velocityX = body.velocity.x;
+    const velocityY = body.velocity.y;
+
+    // Check if grounded
+    this.wasGrounded = this.isGrounded;
+    this.isGrounded = body.blocked.down || body.touching.down;
+
+    // Detect jump launch (transition from grounded to airborne with upward velocity)
+    if (this.wasGrounded && !this.isGrounded && velocityY < -100) {
+      // Start jump launch animation
+      this.isJumpLaunching = true;
+      this.jumpLaunchTime = this.time.now;
+    }
+
+    // Update jump launch animation
+    if (this.isJumpLaunching) {
+      const timeSinceLaunch = this.time.now - this.jumpLaunchTime;
+      if (timeSinceLaunch < this.JUMP_LAUNCH_DURATION) {
+        // Still in launch phase - apply stretch
+        this.player.setScale(0.8, 1.3);
+      } else {
+        // Launch phase over - return to normal
+        this.isJumpLaunching = false;
+        this.player.setScale(1, 1);
+      }
+    }
+
+    // Landing squash effect
+    if (!this.wasGrounded && this.isGrounded && velocityY > 100) {
+      this.createLandingSquash();
+      // Reset jump launch state when landing
+      this.isJumpLaunching = false;
+    }
+
+
+
+    // Movement lean
+    if (Math.abs(velocityX) > 10) {
+      const leanAngle = Phaser.Math.Clamp(velocityX * 0.015, -5, 5); // Max 5 degrees
+      this.player.setRotation(Phaser.Math.DegToRad(leanAngle));
+    } else if (this.isGrounded && !this.isDashing) {
+      // Return to upright position
+      this.player.setRotation(0);
+    }
+
+    // REMOVED: Old velocity-based jump stretch - now using launch timing above
+    
+    // FORCE normal scale when grounded and not doing special animations
+    if (this.isGrounded && !this.isDashing && !this.landingSquashTween?.isPlaying() && !this.isJumpLaunching) {
+      this.player.setScale(1, 1);
+    }
+    
+    // Update direction indicator
+    if (this.directionIndicator) {
+      // Position above player
+      this.directionIndicator.setPosition(this.player.x, this.player.y - 35);
+      
+      // Point in movement direction or fade if stationary
+      if (Math.abs(velocityX) > 10) {
+        this.directionIndicator.setAlpha(0.8);
+        
+        // Calculate angle based on velocity
+        const angle = velocityX > 0 ? 90 : -90;
+        this.directionIndicator.setRotation(Phaser.Math.DegToRad(angle));
+        
+        // Store last velocity for when stopped
+        this.lastVelocityX = velocityX;
+      } else {
+        // Fade out when not moving
+        this.directionIndicator.setAlpha(0.3);
+        
+        // Keep pointing in last direction
+        const angle = this.lastVelocityX > 0 ? 90 : -90;
+        this.directionIndicator.setRotation(Phaser.Math.DegToRad(angle));
+      }
+      
+      // Glow during dash
+      if (this.isDashing) {
+        this.directionIndicator.setAlpha(1);
+        this.directionIndicator.setScale(1.2);
+      } else {
+        this.directionIndicator.setScale(1);
+      }
+    }
+  }
+  
+  createLandingSquash() {
+    // Stop any existing landing animation
+    if (this.landingSquashTween) {
+      this.landingSquashTween.stop();
+    }
+    
+    // More subtle squash effect
+    this.player.setScale(1.15, 0.85);
+    
+    this.landingSquashTween = this.tweens.add({
+      targets: this.player,
+      scaleX: 1,
+      scaleY: 1,
+      duration: 200,
+      ease: 'Back.out'
+    });
   }
 }

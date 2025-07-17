@@ -75,7 +75,7 @@ export class WeaponSystem {
     const bulletY = this.gun.y;
     
     // Fire bullet with team color
-    const bulletColor = teamColor || 0xFF6B6B; // Default to red if no team color
+    const bulletColor = teamColor || 0xFF6B6B; // Default to red glow if no team color
     const bullet = this.bulletPool.fire(bulletX, bulletY, direction, bulletColor);
     
     if (bullet) {
