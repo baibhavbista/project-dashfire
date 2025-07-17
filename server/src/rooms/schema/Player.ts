@@ -20,13 +20,13 @@ export class Player extends Schema {
     this.team = team;
     this.name = name || `Player${id.substring(0, 4)}`;
     
-    // Set initial spawn position based on team
+    // Set initial spawn position based on team - near bottom of expanded arena
     if (team === "red") {
       this.x = 200;
-      this.y = 500;
+      this.y = 1350; // Near bottom of 1536 height arena
     } else {
       this.x = 2800; // Near the right side of the arena
-      this.y = 500;
+      this.y = 1350; // Near bottom of 1536 height arena
     }
   }
 } 

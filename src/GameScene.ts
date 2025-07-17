@@ -160,7 +160,7 @@ export class GameScene extends Phaser.Scene {
     redGraphics.generateTexture('red-player', 32, 48);
     redGraphics.destroy();
     
-    this.player = this.physics.add.sprite(100, 500, 'red-player');
+    this.player = this.physics.add.sprite(100, 1350, 'red-player'); // Spawn near bottom of expanded arena
     this.player.setOrigin(0.5, 0.5); // Center origin for proper scaling
     
     // Ensure normal scale at start
