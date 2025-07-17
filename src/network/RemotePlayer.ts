@@ -36,8 +36,8 @@ export class RemotePlayer {
     this.sprite = scene.physics.add.sprite(x, y, 'player');
     this.sprite.setDisplaySize(32, 48);
     
-    // Set team color
-    const teamColor = team === "red" ? 0xFF6B6B : 0x4ECDC4;
+    // Set team color - Thomas Was Alone vibrant colors
+    const teamColor = team === "red" ? 0xE74C3C : 0x3498DB;
     this.sprite.setTint(teamColor);
     
     // Disable physics for remote players (they're controlled by server)
@@ -49,7 +49,7 @@ export class RemotePlayer {
     this.createHealthBar();
     
     // Create gun visual
-    this.gun = scene.add.rectangle(0, 0, 24, 3, 0x000000);
+    this.gun = scene.add.rectangle(0, 0, 24, 3, 0x666666);
     this.gun.setOrigin(0, 0.5);
     
     // Create name text
@@ -185,9 +185,10 @@ export class RemotePlayer {
       if (this.nameText && this.nameText.active) this.nameText.setVisible(true);
     }
     
-    // Update dash tint
+    // Update dash state
     if (isDashing) {
-      this.sprite.setTint(0x00FFFF);
+      // Keep team color during dash (no tint change)
+      // The dash trails provide the visual feedback
       
       // Start creating dash trails if just started dashing
       if (!this.wasDashing) {
@@ -199,7 +200,8 @@ export class RemotePlayer {
         this.createDashTrail();
       }
     } else {
-      const teamColor = this.team === "red" ? 0xFF6B6B : 0x4ECDC4;
+      // Maintain team color when not dashing
+      const teamColor = this.team === "red" ? 0xE74C3C : 0x3498DB;
       this.sprite.setTint(teamColor);
       this.wasDashing = false;
     }
@@ -220,7 +222,10 @@ export class RemotePlayer {
     // Create new trail
     const trail = this.scene.add.image(this.sprite.x, this.sprite.y, 'player');
     trail.setDisplaySize(32, 48);
-    trail.setTint(0x00FFFF);
+    
+    // Use team glow colors for dash trail
+    const trailColor = this.team === "red" ? 0xFF6B6B : 0x5DADE2;
+    trail.setTint(trailColor);
     trail.setAlpha(0.6);
     trail.setFlipX(this.sprite.flipX);
 

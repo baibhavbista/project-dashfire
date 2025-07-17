@@ -22,7 +22,7 @@ export class WeaponSystem {
     this.bulletPool = new BulletPool(scene);
     
     // Create gun visual
-    this.gun = scene.add.rectangle(0, 0, this.GUN_LENGTH, this.GUN_WIDTH, 0x000000);
+    this.gun = scene.add.rectangle(0, 0, this.GUN_LENGTH, this.GUN_WIDTH, 0x666666);
     this.gun.setOrigin(0, 0.5); // Origin at the left/base of gun
     
     // Create muzzle flash (initially hidden)
@@ -62,7 +62,7 @@ export class WeaponSystem {
     }
   }
 
-  shoot(isPlayerDashing: boolean): boolean {
+  shoot(isPlayerDashing: boolean, teamColor?: number): boolean {
     // Can't shoot while dashing or on cooldown
     if (!this.canShoot || isPlayerDashing || this.shootCooldown > 0) {
       return false;
@@ -74,8 +74,9 @@ export class WeaponSystem {
     const bulletX = this.gun.x + (this.GUN_LENGTH * direction * 0.9);
     const bulletY = this.gun.y;
     
-    // Fire bullet
-    const bullet = this.bulletPool.fire(bulletX, bulletY, direction);
+    // Fire bullet with team color
+    const bulletColor = teamColor || 0xFF6B6B; // Default to red if no team color
+    const bullet = this.bulletPool.fire(bulletX, bulletY, direction, bulletColor);
     
     if (bullet) {
       // Set cooldown

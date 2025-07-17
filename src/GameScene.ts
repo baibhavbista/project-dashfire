@@ -76,10 +76,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   preload() {
-    // Create colored rectangles for platforms, player and bullets
-    this.load.image('ground', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAI9jzgwTQAAAABJRU5ErkJggg==');
-    this.load.image('player', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAI9jzgwTQAAAABJRU5ErkJggg==');
-    this.load.image('bullet', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChAI9jzgwTQAAAABJRU5ErkJggg==');
+    // Create white pixel data URI for tintable sprites
+    const whitePixel = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==';
+    
+    // Use white pixels so we can tint them with team colors
+    this.load.image('ground', whitePixel);
+    this.load.image('player', whitePixel);
+    this.load.image('bullet', whitePixel);
     
     // Load generated sounds
     const sounds = SoundManager.generateSoundDataURIs();
@@ -93,6 +96,9 @@ export class GameScene extends Phaser.Scene {
   create() {
     // Store reference to this scene for external access
     (this.game as Phaser.Game & { gameScene?: GameScene }).gameScene = this;
+    
+    // Set dark background color (Thomas Was Alone style)
+    this.cameras.main.setBackgroundColor('#0A0A0A');
     
     // Check if we're in multiplayer mode
     const networkManager = this.game.registry.get('networkManager');
@@ -114,17 +120,25 @@ export class GameScene extends Phaser.Scene {
     // Create the main wide platform (arena floor)
     const arenaWidth = ARENA_WIDTH;
     
-    // Main arena floor using shared geometry
-    const mainPlatform = this.add.rectangle(MAIN_PLATFORM.x, MAIN_PLATFORM.y, MAIN_PLATFORM.width, MAIN_PLATFORM.height, 0x228B22);
+    // Main arena floor using shared geometry - dark gray platform
+    const mainPlatform = this.add.rectangle(MAIN_PLATFORM.x, MAIN_PLATFORM.y, MAIN_PLATFORM.width, MAIN_PLATFORM.height, 0x2B2B2B);
+    mainPlatform.setStrokeStyle(1, 0x4A4A4A); // Subtle edge highlight
     this.platforms.add(mainPlatform);
 
     // Create multiple elevated platforms for jumping
     this.createElevatedPlatforms();
 
-    // Create player
+    // Create player - clean rectangle design
     this.player = this.physics.add.sprite(100, 500, 'player');
-    this.player.setDisplaySize(32, 48);
-    this.player.setTint(0xFF6B6B);
+    this.player.setDisplaySize(32, 48); // Golden ratio-ish dimensions
+    
+    // Set initial color - will be overridden by team color in multiplayer
+    const defaultColor = this.isMultiplayer ? 0xCCCCCC : 0xE74C3C; // Gray until team assigned, or red for single player
+    this.player.setTint(defaultColor);
+    
+    // Add subtle outline for visibility (doesn't work on sprites, but keeping for future shader implementation)
+    // For now the white base + tint provides good visibility
+    
     this.player.setBounce(0.1);
     this.player.setCollideWorldBounds(true); // Keep player within world bounds
 
@@ -172,59 +186,93 @@ export class GameScene extends Phaser.Scene {
       this.createBulletImpactEffect(bullet.x, bullet.y);
     });
 
-    // Add some visual flair
-    this.createBackground();
+    // Add atmospheric background elements
+    this.createAtmosphericBackground();
     this.createParticles();
   }
 
   createElevatedPlatforms() {
-    // Use shared platform definitions
+    // Use shared platform definitions with dark gray color scheme
     ELEVATED_PLATFORMS.forEach(platform => {
-      const rect = this.add.rectangle(platform.x, platform.y, platform.width, platform.height, 0x8B4513);
-      rect.setStrokeStyle(4, 0x654321);
+      const rect = this.add.rectangle(platform.x, platform.y, platform.width, platform.height, 0x3A3A3A);
+      rect.setStrokeStyle(1, 0x4A4A4A); // Subtle edge highlight
       this.platforms.add(rect);
     });
   }
 
-  createBackground() {
-    // Add some background elements for depth
-    const cloudColors = [0xFFFFFF, 0xF0F0F0, 0xE8E8E8];
-    
-    for (let i = 0; i < 15; i++) {
-      const cloud = this.add.circle(
-        Phaser.Math.Between(0, 3000),
-        Phaser.Math.Between(50, 200),
-        Phaser.Math.Between(30, 60),
-        cloudColors[Math.floor(Math.random() * cloudColors.length)],
-        0.6
+  createAtmosphericBackground() {
+    // Add subtle geometric patterns in the far background
+    for (let i = 0; i < 10; i++) {
+      const size = Phaser.Math.Between(100, 200);
+      const shape = this.add.rectangle(
+        Phaser.Math.Between(0, ARENA_WIDTH),
+        Phaser.Math.Between(100, ARENA_HEIGHT - 200),
+        size,
+        size,
+        0x1A1A1A,
+        0.1
       );
-      cloud.setScrollFactor(0.3); // Parallax effect
+      shape.setScrollFactor(0.2); // Far parallax
+      shape.setAngle(Phaser.Math.Between(0, 45));
     }
 
-    // Add distant mountains
-    for (let i = 0; i < 8; i++) {
-      const mountain = this.add.triangle(
-        i * 400 + Phaser.Math.Between(-50, 50),
-        600,
-        0, 0,
-        Phaser.Math.Between(150, 250), Phaser.Math.Between(150, 250),
-        Phaser.Math.Between(150, 250), Phaser.Math.Between(150, 250),
-        0x6B8E23,
-        0.4
+    // Add floating ambient particles
+    for (let i = 0; i < 20; i++) {
+      const particle = this.add.circle(
+        Phaser.Math.Between(0, ARENA_WIDTH),
+        Phaser.Math.Between(0, ARENA_HEIGHT),
+        Phaser.Math.Between(1, 3),
+        0x333333,
+        0.3
       );
-      mountain.setScrollFactor(0.2);
+      particle.setScrollFactor(0.5); // Mid parallax
+      
+      // Animate floating
+      this.tweens.add({
+        targets: particle,
+        y: particle.y + Phaser.Math.Between(50, 100),
+        duration: Phaser.Math.Between(5000, 8000),
+        ease: 'Sine.easeInOut',
+        yoyo: true,
+        repeat: -1,
+        delay: Phaser.Math.Between(0, 2000)
+      });
     }
+    
+    // Add vignette effect (dark edges)
+    const vignette = this.add.graphics();
+    vignette.fillStyle(0x000000, 0);
+    
+    // Create gradient effect at edges
+    const gradientWidth = 200;
+    
+    // Left edge
+    for (let i = 0; i < gradientWidth; i++) {
+      const alpha = (1 - (i / gradientWidth)) * 0.5;
+      vignette.fillStyle(0x000000, alpha);
+      vignette.fillRect(i, 0, 1, ARENA_HEIGHT);
+    }
+    
+    // Right edge
+    for (let i = 0; i < gradientWidth; i++) {
+      const alpha = (1 - (i / gradientWidth)) * 0.5;
+      vignette.fillStyle(0x000000, alpha);
+      vignette.fillRect(ARENA_WIDTH - gradientWidth + i, 0, 1, ARENA_HEIGHT);
+    }
+    
+    vignette.setScrollFactor(0);
+    vignette.setDepth(-100); // Ensure it's behind everything
   }
 
   createParticles() {
-    // Create dust particles for landing effects
+    // Create dust particles for landing effects - subtle and matching platform color
     const particles = this.add.particles(0, 0, 'ground', {
-      scale: { start: 0.1, end: 0.3 },
-      speed: { min: 50, max: 100 },
-      lifespan: 500,
+      scale: { start: 0.05, end: 0.15 },
+      speed: { min: 30, max: 60 },
+      lifespan: 400,
       quantity: 0,
-      tint: 0x8B4513,
-      alpha: { start: 0.7, end: 0 }
+      tint: 0x4A4A4A, // Platform edge color
+      alpha: { start: 0.5, end: 0 }
     });
 
     // Store particles for later use
@@ -241,8 +289,8 @@ export class GameScene extends Phaser.Scene {
     this.networkManager.on("team-assigned", (data: { playerId: string; team: "red" | "blue"; roomId: string }) => {
       this.localPlayerId = data.playerId;
       
-      // Update player color based on team
-      const teamColor = data.team === "red" ? 0xFF6B6B : 0x4ECDC4;
+      // Update player color based on team - using Thomas Was Alone vibrant colors
+      const teamColor = data.team === "red" ? 0xE74C3C : 0x3498DB;
       this.player.setTint(teamColor);
       
       // Teleport to team spawn point
@@ -306,8 +354,9 @@ export class GameScene extends Phaser.Scene {
     this.networkManager.on("bullet-added", (bullet: BulletData) => {
       // Only render bullets from other players
       if (bullet.ownerId !== this.localPlayerId) {
-        // Create visual bullet (no physics, just visual)
-        const bulletSprite = this.add.rectangle(bullet.x, bullet.y, 6, 3, 0x000000);
+        // Create visual bullet with team color
+        const bulletColor = bullet.ownerTeam === "blue" ? 0x5DADE2 : 0xFF6B6B;
+        const bulletSprite = this.add.rectangle(bullet.x, bullet.y, 10, 6, bulletColor);
         
         // Animate bullet
         this.tweens.add({
@@ -430,36 +479,40 @@ export class GameScene extends Phaser.Scene {
   createMultiplayerUI() {
     // Create UI container
     this.multiplayerUI = this.add.container(0, 0);
-    this.multiplayerUI.setScrollFactor(0); // Keep UI fixed on screen
+    this.multiplayerUI.setScrollFactor(0);
     
-    // Background for UI
-    const bg = this.add.rectangle(512, 30, 300, 50, 0x000000, 0.7);
+    // Minimal dark background for team info
+    const bg = this.add.rectangle(512, 30, 200, 50, 0x1A1A1A, 0.8);
     
     // Team indicator
     const team = this.networkManager?.getPlayerTeam();
+    const teamColor = team === "red" ? "#E74C3C" : team === "blue" ? "#3498DB" : "#ffffff";
     const teamText = this.add.text(512, 20, `Team: ${team?.toUpperCase() || 'Unknown'}`, {
       fontSize: '16px',
-      color: '#ffffff'
+      color: teamColor,
+      fontFamily: 'Arial, sans-serif'
     }).setOrigin(0.5);
     
-    // Leave button
+    // Leave button - subtle style
     const leaveBtn = this.add.text(512, 40, '[Leave Game]', {
       fontSize: '14px',
-      color: '#ff6666'
+      color: '#999999',
+      fontFamily: 'Arial, sans-serif'
     }).setOrigin(0.5)
       .setInteractive()
+      .on('pointerover', () => leaveBtn.setColor('#ffffff'))
+      .on('pointerout', () => leaveBtn.setColor('#999999'))
       .on('pointerdown', () => {
         this.leaveMultiplayer();
       });
     
     this.multiplayerUI.add([bg, teamText, leaveBtn]);
     
-    // Create team score display
+    // Create team score display - minimalist style
     this.scoreText = this.add.text(512, 80, 'Red: 0 | Blue: 0', {
-      fontSize: '24px',
+      fontSize: '20px',
       color: '#ffffff',
-      stroke: '#000000',
-      strokeThickness: 2
+      fontFamily: 'Arial, sans-serif'
     });
     this.scoreText.setOrigin(0.5);
     this.scoreText.setScrollFactor(0);
@@ -486,33 +539,30 @@ export class GameScene extends Phaser.Scene {
   }
   
   createHealthUI() {
-    // Health bar background
-    this.healthBarBg = this.add.rectangle(10, 10, 204, 24, 0x000000);
+    // Minimalist health bar - no borders
+    this.healthBarBg = this.add.rectangle(20, 20, 200, 8, 0x2B2B2B);
     this.healthBarBg.setOrigin(0, 0);
     this.healthBarBg.setScrollFactor(0);
-    this.healthBarBg.setAlpha(0.8);
     
-    // Health bar fill
-    this.healthBar = this.add.rectangle(12, 12, 200, 20, 0x00ff00);
+    // Health bar fill - gradient from green to red based on health
+    this.healthBar = this.add.rectangle(20, 20, 200, 8, 0x2ECC71);
     this.healthBar.setOrigin(0, 0);
     this.healthBar.setScrollFactor(0);
     
-    // Health text
-    this.healthText = this.add.text(112, 22, '100/100', {
-      fontSize: '14px',
+    // Health text - clean typography
+    this.healthText = this.add.text(120, 28, '100', {
+      fontSize: '16px',
       color: '#ffffff',
-      stroke: '#000000',
-      strokeThickness: 2
+      fontFamily: 'Arial, sans-serif'
     });
     this.healthText.setOrigin(0.5);
     this.healthText.setScrollFactor(0);
     
-    // Respawn timer (initially hidden)
+    // Respawn timer - minimal style
     this.respawnTimer = this.add.text(512, 300, '', {
-      fontSize: '32px',
+      fontSize: '28px',
       color: '#ffffff',
-      stroke: '#000000',
-      strokeThickness: 3
+      fontFamily: 'Arial, sans-serif'
     });
     this.respawnTimer.setOrigin(0.5);
     this.respawnTimer.setScrollFactor(0);
@@ -579,19 +629,19 @@ export class GameScene extends Phaser.Scene {
     
     // Update bar width
     const healthPercent = this.currentHealth / 100;
-    this.healthBar.setDisplaySize(200 * healthPercent, 20);
+    this.healthBar.setDisplaySize(200 * healthPercent, 8);
     
     // Update bar color based on health
     if (healthPercent > 0.6) {
-      this.healthBar.setFillStyle(0x00ff00); // Green
+      this.healthBar.setFillStyle(0x2ECC71); // Green
     } else if (healthPercent > 0.3) {
-      this.healthBar.setFillStyle(0xffff00); // Yellow
+      this.healthBar.setFillStyle(0xF1C40F); // Yellow
     } else {
-      this.healthBar.setFillStyle(0xff0000); // Red
+      this.healthBar.setFillStyle(0xE74C3C); // Red
     }
     
     // Update text
-    this.healthText.setText(`${Math.max(0, Math.round(this.currentHealth))}/100`);
+    this.healthText.setText(`${Math.max(0, Math.round(this.currentHealth))}`);
   }
 
   updateScoreDisplay() {
@@ -752,7 +802,14 @@ export class GameScene extends Phaser.Scene {
 
     // Handle shooting (either Space or A key)
     if (Phaser.Input.Keyboard.JustDown(this.shootKey) || Phaser.Input.Keyboard.JustDown(this.shootKeyAlt)) {
-      if (this.weaponSystem.shoot(this.isDashing)) {
+      // Get team color for bullets
+      let bulletColor = 0xFF6B6B; // Default red
+      if (this.isMultiplayer && this.networkManager) {
+        const team = this.networkManager.getPlayerTeam();
+        bulletColor = team === "blue" ? 0x5DADE2 : 0xFF6B6B; // Bright team colors for bullets
+      }
+      
+      if (this.weaponSystem.shoot(this.isDashing, bulletColor)) {
         this.soundManager.playShoot();
         
         // Send shoot to server if multiplayer
@@ -1051,8 +1108,8 @@ export class GameScene extends Phaser.Scene {
       this.networkManager.sendDash(true);
     }
 
-    // Change player color during dash
-    this.player.setTint(0x00FFFF); // Cyan color during dash
+    // Keep team color during dash (no tint change for cleaner aesthetic)
+    // The dash trails will provide the visual feedback
 
     // End dash after duration (if not cancelled early)
     this.time.delayedCall(150, () => {
@@ -1073,13 +1130,13 @@ export class GameScene extends Phaser.Scene {
       this.networkManager.sendDash(false);
     }
     
-    // Return to team color
+    // Ensure correct team color is maintained
     if (this.isMultiplayer && this.networkManager) {
       const team = this.networkManager.getPlayerTeam();
-      const teamColor = team === "red" ? 0xFF6B6B : 0x4ECDC4;
+      const teamColor = team === "red" ? 0xE74C3C : 0x3498DB;
       this.player.setTint(teamColor);
     } else {
-      this.player.setTint(0xFF6B6B); // Default color
+      this.player.setTint(0xE74C3C); // Default red color
     }
     
     // Reduce velocity slightly after dash
@@ -1111,7 +1168,15 @@ export class GameScene extends Phaser.Scene {
     // Create new trail
     const trail = this.add.image(this.player.x, this.player.y, 'player');
     trail.setDisplaySize(32, 48);
-    trail.setTint(0x00FFFF);
+    
+    // Use team color for dash trail with glow effect
+    let trailColor = 0xE74C3C; // Default to red
+    if (this.isMultiplayer && this.networkManager) {
+      const team = this.networkManager.getPlayerTeam();
+      trailColor = team === "blue" ? 0x5DADE2 : 0xFF6B6B; // Glow colors from design doc
+    }
+    
+    trail.setTint(trailColor);
     trail.setAlpha(0.6);
     trail.setFlipX(this.player.flipX);
 

@@ -9,8 +9,8 @@ export class BulletPool {
   private bullets: Bullet[] = [];
   private readonly POOL_SIZE = 30;
   private readonly BULLET_SPEED = 700;
-  private readonly BULLET_WIDTH = 6;
-  private readonly BULLET_HEIGHT = 3;
+  private readonly BULLET_WIDTH = 10;
+  private readonly BULLET_HEIGHT = 6;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -19,12 +19,12 @@ export class BulletPool {
 
   private createPool(): void {
     for (let i = 0; i < this.POOL_SIZE; i++) {
-      // Create a simple black rectangle for the bullet
+      // Create a simple rectangle for the bullet
       const bullet = this.scene.physics.add.sprite(0, 0, 'bullet') as Bullet;
       
       // Set bullet appearance
       bullet.setDisplaySize(this.BULLET_WIDTH, this.BULLET_HEIGHT);
-      bullet.setTint(0x000000); // Black color
+      bullet.setTint(0xFFFFFF); // White by default, will be tinted with team color
       bullet.setActive(false);
       bullet.setVisible(false);
       bullet.isActive = false;
@@ -38,7 +38,7 @@ export class BulletPool {
     }
   }
 
-  fire(x: number, y: number, direction: number): Bullet | null {
+  fire(x: number, y: number, direction: number, teamColor?: number): Bullet | null {
     // Find an inactive bullet
     const bullet = this.bullets.find(b => !b.isActive);
     
@@ -52,6 +52,14 @@ export class BulletPool {
     bullet.setVisible(true);
     bullet.isActive = true;
     bullet.setPosition(x, y);
+    
+    // Set team color if provided (bright version for visibility)
+    if (teamColor) {
+      bullet.setTint(teamColor);
+    } else {
+      // Default bright red for single player
+      bullet.setTint(0xFF6B6B);
+    }
     
     // Set velocity based on direction
     bullet.setVelocityX(this.BULLET_SPEED * direction);
