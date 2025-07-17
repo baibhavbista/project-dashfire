@@ -4,6 +4,7 @@ import type { RoomListing } from "../scenes/LobbyScene";
 
 export interface PlayerData {
   id: string;
+  name: string;
   x: number;
   y: number;
   velocityX: number;

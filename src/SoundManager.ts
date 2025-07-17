@@ -5,6 +5,8 @@ export class SoundManager {
   private jumpSound?: Phaser.Sound.BaseSound;
   private dashSound?: Phaser.Sound.BaseSound;
   private shootSound?: Phaser.Sound.BaseSound;
+  private hitSound?: Phaser.Sound.BaseSound;
+  private deathSound?: Phaser.Sound.BaseSound;
   
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -29,6 +31,18 @@ export class SoundManager {
       volume: 0.6,
       rate: 1.3
     });
+    
+    // Create hit sound
+    this.hitSound = this.scene.sound.add('hit', {
+      volume: 0.5,
+      rate: 1.0
+    });
+    
+    // Create death sound
+    this.deathSound = this.scene.sound.add('death', {
+      volume: 0.6,
+      rate: 0.8
+    });
   }
 
   playJump(): void {
@@ -42,13 +56,22 @@ export class SoundManager {
   playShoot(): void {
     this.shootSound?.play();
   }
+  
+  playHit(): void {
+    this.hitSound?.play();
+  }
+  
+  playDeath(): void {
+    this.deathSound?.play();
+  }
 
-  // Generate simple sound data URIs
-  static generateSoundDataURIs(): { [key: string]: string } {
+  static generateSoundDataURIs() {
     return {
-      jump: this.generateJumpSound(),
-      dash: this.generateDashSound(),
-      shoot: this.generateShootSound()
+      jump: SoundManager.generateJumpSound(),
+      dash: SoundManager.generateDashSound(),
+      shoot: SoundManager.generateShootSound(),
+      hit: SoundManager.generateHitSound(),
+      death: SoundManager.generateDeathSound()
     };
   }
 
@@ -246,6 +269,122 @@ export class SoundManager {
       }
       
       data[44 + i] = 128 + sound * 120;
+    }
+    
+    let binary = '';
+    for (let i = 0; i < data.length; i++) {
+      binary += String.fromCharCode(data[i]);
+    }
+    return 'data:audio/wav;base64,' + btoa(binary);
+  }
+  
+  // Generate hit sound - sharp impact
+  private static generateHitSound(): string {
+    const sampleRate = 22050;
+    const duration = 0.1;
+    const samples = sampleRate * duration;
+    const data = new Uint8Array(44 + samples);
+    
+    // WAV header
+    const setString = (offset: number, str: string) => {
+      for (let i = 0; i < str.length; i++) {
+        data[offset + i] = str.charCodeAt(i);
+      }
+    };
+    
+    setString(0, 'RIFF');
+    data[4] = (36 + samples) & 0xff;
+    data[5] = ((36 + samples) >> 8) & 0xff;
+    setString(8, 'WAVEfmt ');
+    data[16] = 16;
+    data[20] = 1;
+    data[22] = 1;
+    data[24] = sampleRate & 0xff;
+    data[25] = (sampleRate >> 8) & 0xff;
+    data[28] = sampleRate & 0xff;
+    data[29] = (sampleRate >> 8) & 0xff;
+    data[32] = 1;
+    data[34] = 8;
+    setString(36, 'data');
+    data[40] = samples & 0xff;
+    data[41] = (samples >> 8) & 0xff;
+    
+    // Generate a sharp thud/impact sound
+    for (let i = 0; i < samples; i++) {
+      const t = i / sampleRate;
+      
+      // Quick impact with low frequency thud
+      const envelope = Math.exp(-t * 30);
+      const freq1 = 80 + Math.random() * 20;
+      const freq2 = 200 + Math.random() * 50;
+      
+      const wave1 = Math.sin(2 * Math.PI * freq1 * t);
+      const wave2 = Math.sin(2 * Math.PI * freq2 * t) * 0.3;
+      const noise = (Math.random() - 0.5) * 0.5;
+      
+      const sound = (wave1 + wave2 + noise) * envelope;
+      
+      data[44 + i] = 128 + sound * 100;
+    }
+    
+    let binary = '';
+    for (let i = 0; i < data.length; i++) {
+      binary += String.fromCharCode(data[i]);
+    }
+    return 'data:audio/wav;base64,' + btoa(binary);
+  }
+  
+  // Generate death sound - longer, descending tone
+  private static generateDeathSound(): string {
+    const sampleRate = 22050;
+    const duration = 0.5;
+    const samples = sampleRate * duration;
+    const data = new Uint8Array(44 + samples);
+    
+    // WAV header
+    const setString = (offset: number, str: string) => {
+      for (let i = 0; i < str.length; i++) {
+        data[offset + i] = str.charCodeAt(i);
+      }
+    };
+    
+    setString(0, 'RIFF');
+    data[4] = (36 + samples) & 0xff;
+    data[5] = ((36 + samples) >> 8) & 0xff;
+    setString(8, 'WAVEfmt ');
+    data[16] = 16;
+    data[20] = 1;
+    data[22] = 1;
+    data[24] = sampleRate & 0xff;
+    data[25] = (sampleRate >> 8) & 0xff;
+    data[28] = sampleRate & 0xff;
+    data[29] = (sampleRate >> 8) & 0xff;
+    data[32] = 1;
+    data[34] = 8;
+    setString(36, 'data');
+    data[40] = samples & 0xff;
+    data[41] = (samples >> 8) & 0xff;
+    
+    // Generate a descending/fading sound
+    for (let i = 0; i < samples; i++) {
+      const t = i / sampleRate;
+      
+      // Descending frequency
+      const startFreq = 400;
+      const endFreq = 50;
+      const frequency = startFreq * Math.pow(endFreq / startFreq, t / duration);
+      
+      // Fading envelope
+      const envelope = Math.pow(1 - t / duration, 0.5);
+      
+      // Multiple harmonics for richness
+      const fundamental = Math.sin(2 * Math.PI * frequency * t);
+      const harmonic2 = Math.sin(2 * Math.PI * frequency * 2 * t) * 0.5;
+      const harmonic3 = Math.sin(2 * Math.PI * frequency * 3 * t) * 0.3;
+      
+      const wave = (fundamental + harmonic2 + harmonic3) / 1.8;
+      
+      data[44 + i] = 128 + wave * envelope * 80;
     }
     
     let binary = '';

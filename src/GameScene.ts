@@ -2,8 +2,9 @@ import Phaser from 'phaser';
 import { WeaponSystem } from './WeaponSystem';
 import { Bullet } from './BulletPool';
 import { SoundManager } from './SoundManager';
-import { NetworkManager, PlayerData, BulletData } from './network/NetworkManager';
 import { RemotePlayer } from './network/RemotePlayer';
+import { NetworkManager, PlayerData, BulletData } from './network/NetworkManager';
+import { ARENA_WIDTH, ARENA_HEIGHT, MAIN_PLATFORM, ELEVATED_PLATFORMS } from '../shared/WorldGeometry';
 
 // Custom interfaces for better type safety
 interface PlayerSprite extends Phaser.Physics.Arcade.Sprite {
@@ -85,6 +86,8 @@ export class GameScene extends Phaser.Scene {
     this.load.audio('jump', sounds.jump);
     this.load.audio('dash', sounds.dash);
     this.load.audio('shoot', sounds.shoot);
+    this.load.audio('hit', sounds.hit);
+    this.load.audio('death', sounds.death);
   }
 
   create() {
@@ -109,12 +112,10 @@ export class GameScene extends Phaser.Scene {
     this.platforms = this.physics.add.staticGroup();
 
     // Create the main wide platform (arena floor)
-    const arenaWidth = 3000; // 3x wider than screen width
-    const arenaHeight = 100;
-    const arenaY = 700;
+    const arenaWidth = ARENA_WIDTH;
     
-    // Main arena floor
-    const mainPlatform = this.add.rectangle(arenaWidth / 2, arenaY, arenaWidth, arenaHeight, 0x228B22);
+    // Main arena floor using shared geometry
+    const mainPlatform = this.add.rectangle(MAIN_PLATFORM.x, MAIN_PLATFORM.y, MAIN_PLATFORM.width, MAIN_PLATFORM.height, 0x228B22);
     this.platforms.add(mainPlatform);
 
     // Create multiple elevated platforms for jumping
@@ -132,12 +133,12 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.player, this.platforms);
 
     // Camera setup - follow player but constrain to world bounds
-    this.cameras.main.setBounds(0, 0, arenaWidth, 768);
+    this.cameras.main.setBounds(0, 0, arenaWidth, ARENA_HEIGHT);
     this.cameras.main.startFollow(this.player, true, 0.1, 0.1);
     this.cameras.main.setDeadzone(200, 100);
 
     // Set world bounds
-    this.physics.world.setBounds(0, 0, arenaWidth, 768);
+    this.physics.world.setBounds(0, 0, arenaWidth, ARENA_HEIGHT);
 
     // Create input handlers
     if (!this.input.keyboard) {
@@ -160,7 +161,15 @@ export class GameScene extends Phaser.Scene {
     const bullets = this.weaponSystem.getBulletPool().getBullets();
     this.physics.add.collider(bullets, this.platforms, (bulletObj) => {
       const bullet = bulletObj as Bullet;
-      this.weaponSystem.getBulletPool().deactivateBullet(bullet);
+      
+      // In single-player, handle collision locally
+      // In multiplayer, let the server decide
+      if (!this.isMultiplayer) {
+        this.weaponSystem.getBulletPool().deactivateBullet(bullet);
+      }
+      
+      // Visual effect for both modes
+      this.createBulletImpactEffect(bullet.x, bullet.y);
     });
 
     // Add some visual flair
@@ -169,40 +178,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   createElevatedPlatforms() {
-    const platformData = [
-      // Left side platforms
-      { x: 300, y: 550, width: 200, height: 16 },
-      { x: 150, y: 400, width: 150, height: 16 },
-      { x: 400, y: 350, width: 180, height: 16 },
-      
-      // Center area - multi-level structure
-      { x: 800, y: 600, width: 250, height: 16 },
-      { x: 900, y: 500, width: 200, height: 16 },
-      { x: 750, y: 400, width: 150, height: 16 },
-      { x: 1000, y: 300, width: 180, height: 16 },
-      
-      // Right side platforms
-      { x: 1400, y: 550, width: 200, height: 16 },
-      { x: 1600, y: 450, width: 150, height: 16 },
-      { x: 1350, y: 350, width: 180, height: 16 },
-      
-      // Far right area
-      { x: 1900, y: 600, width: 220, height: 16 },
-      { x: 2100, y: 500, width: 180, height: 16 },
-      { x: 1800, y: 400, width: 160, height: 16 },
-      
-      // High platforms for advanced movement
-      { x: 2300, y: 450, width: 150, height: 16 },
-      { x: 2500, y: 350, width: 200, height: 16 },
-      { x: 2700, y: 250, width: 180, height: 16 },
-      
-      // Connecting platforms
-      { x: 1200, y: 450, width: 120, height: 16 },
-      { x: 1700, y: 300, width: 140, height: 16 },
-      { x: 2000, y: 200, width: 160, height: 16 },
-    ];
-
-    platformData.forEach(platform => {
+    // Use shared platform definitions
+    ELEVATED_PLATFORMS.forEach(platform => {
       const rect = this.add.rectangle(platform.x, platform.y, platform.width, platform.height, 0x8B4513);
       rect.setStrokeStyle(4, 0x654321);
       this.platforms.add(rect);
@@ -290,9 +267,9 @@ export class GameScene extends Phaser.Scene {
       }
       
       // Create remote player
-      const remotePlayer = new RemotePlayer(this, player.id, player.x, player.y, player.team);
+      const remotePlayer = new RemotePlayer(this, player.id, player.x, player.y, player.team, player.name);
       this.remotePlayers.set(player.id, remotePlayer);
-      console.log(`Player ${player.id} joined on team ${player.team} at position (${player.x}, ${player.y})`);
+      console.log(`Player ${player.name} (${player.id}) joined on team ${player.team} at position (${player.x}, ${player.y})`);
     });
     
     this.networkManager.on("player-removed", (playerId: string) => {
@@ -321,7 +298,7 @@ export class GameScene extends Phaser.Scene {
       } else if (player.id !== this.localPlayerId && !this.remotePlayers.has(player.id)) {
         // Player doesn't exist yet, create them
         console.log(`Creating player ${player.id} from update event`);
-        const newRemotePlayer = new RemotePlayer(this, player.id, player.x, player.y, player.team);
+        const newRemotePlayer = new RemotePlayer(this, player.id, player.x, player.y, player.team, player.name);
         this.remotePlayers.set(player.id, newRemotePlayer);
       }
     });
@@ -373,21 +350,32 @@ export class GameScene extends Phaser.Scene {
     this.networkManager.on("local-player-server-update", (serverData: { x: number; y: number; health: number; isDead?: boolean; respawnTimer?: number }) => {
       this.handleServerReconciliation({ x: serverData.x, y: serverData.y });
       
-      // Update health
+      // Update health and check for damage
       if (serverData.health !== undefined) {
+        const previousHealth = this.currentHealth;
         this.currentHealth = serverData.health;
         this.updateHealthUI();
+        
+        // Trigger hit effect if we took damage
+        if (previousHealth > this.currentHealth && this.currentHealth > 0) {
+          this.createHitEffect(this.player.x, this.player.y);
+          this.soundManager.playHit();
+        }
       }
       
       // Update death state
       if (serverData.isDead !== undefined) {
+        const wasDead = this.isDead;
         this.isDead = serverData.isDead;
         
-        if (this.isDead) {
-          // Player died
+        if (this.isDead && !wasDead) {
+          // Player just died
           this.player.setAlpha(0.3);
           this.player.setVelocity(0, 0);
-        } else {
+          const team = this.networkManager?.getPlayerTeam() || "red";
+          this.createDeathEffect(this.player.x, this.player.y, team);
+          this.soundManager.playDeath();
+        } else if (!this.isDead && wasDead) {
           // Player respawned
           this.player.setAlpha(1);
           this.respawnTimer?.setVisible(false);
@@ -612,6 +600,98 @@ export class GameScene extends Phaser.Scene {
     }
   }
   
+  createHitEffect(x: number, y: number) {
+    // Create a burst of red particles for hit effect
+    const particleCount = 5;
+    
+    for (let i = 0; i < particleCount; i++) {
+      const particle = this.add.circle(x, y, 3, 0xff0000);
+      
+      // Random direction
+      const angle = (Math.PI * 2 * i) / particleCount + Math.random() * 0.5;
+      const speed = 100 + Math.random() * 100;
+      
+      // Animate particle
+      this.tweens.add({
+        targets: particle,
+        x: x + Math.cos(angle) * speed,
+        y: y + Math.sin(angle) * speed,
+        alpha: 0,
+        scale: 0.5,
+        duration: 500,
+        ease: 'Power2',
+        onComplete: () => particle.destroy()
+      });
+    }
+    
+    // Flash the screen slightly
+    this.cameras.main.flash(100, 255, 0, 0, false);
+  }
+  
+  createDeathEffect(x: number, y: number, team: string) {
+    // Create a burst of team-colored particles
+    const teamColor = team === "red" ? 0xFF6B6B : 0x4ECDC4;
+    const particleCount = 15;
+    
+    for (let i = 0; i < particleCount; i++) {
+      const particle = this.add.circle(x, y, 4, teamColor);
+      
+      // Random direction
+      const angle = (Math.PI * 2 * i) / particleCount + Math.random() * 0.3;
+      const speed = 150 + Math.random() * 150;
+      
+      // Animate particle
+      this.tweens.add({
+        targets: particle,
+        x: x + Math.cos(angle) * speed,
+        y: y + Math.sin(angle) * speed,
+        alpha: 0,
+        scale: 0.2,
+        duration: 800,
+        ease: 'Power3',
+        onComplete: () => particle.destroy()
+      });
+    }
+    
+    // Create expanding ring effect
+    const ring = this.add.circle(x, y, 10, teamColor, 0);
+    ring.setStrokeStyle(3, teamColor);
+    
+    this.tweens.add({
+      targets: ring,
+      scale: 4,
+      alpha: 0,
+      duration: 600,
+      ease: 'Power2',
+      onComplete: () => ring.destroy()
+    });
+  }
+  
+  createBulletImpactEffect(x: number, y: number) {
+    // Create small particle burst for bullet impact
+    const particleCount = 3;
+    
+    for (let i = 0; i < particleCount; i++) {
+      const particle = this.add.circle(x, y, 2, 0x666666);
+      
+      // Random direction
+      const angle = (Math.PI * 2 * i) / particleCount + Math.random() * 0.5;
+      const speed = 50 + Math.random() * 50;
+      
+      // Animate particle
+      this.tweens.add({
+        targets: particle,
+        x: x + Math.cos(angle) * speed,
+        y: y + Math.sin(angle) * speed,
+        alpha: 0,
+        scale: 0.5,
+        duration: 300,
+        ease: 'Power2',
+        onComplete: () => particle.destroy()
+      });
+    }
+  }
+  
   leaveMultiplayer() {
     if (this.networkManager) {
       this.networkManager.disconnect();
@@ -644,6 +724,16 @@ export class GameScene extends Phaser.Scene {
   }
 
   update() {
+    // Guard against player not existing yet
+    if (!this.player || !this.player.body) {
+      return;
+    }
+    
+    // Ensure cursors are initialized
+    if (!this.cursors) {
+      return;
+    }
+    
     const maxSpeed = 300;
     const acceleration = 1200; // High acceleration for snappy movement
     const friction = 800; // Quick deceleration when not moving

@@ -30,13 +30,13 @@ export class TeamBattleState extends Schema {
     return this.getPlayersInTeam(team).length;
   }
 
-  addPlayer(id: string): Player {
+  addPlayer(id: string, name?: string): Player {
     // Auto-balance teams
     const redCount = this.getTeamCount("red");
     const blueCount = this.getTeamCount("blue");
     const team = redCount <= blueCount ? "red" : "blue";
     
-    const player = new Player(id, team);
+    const player = new Player(id, team, name);
     this.players.set(id, player);
     
     // Start game if we have enough players

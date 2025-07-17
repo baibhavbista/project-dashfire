@@ -9,6 +9,7 @@ export class RemotePlayer {
   private scene: Phaser.Scene;
   private gun: Phaser.GameObjects.Rectangle;
   private isDestroyed: boolean = false;
+  private nameText?: Phaser.GameObjects.Text;
   
   // Interpolation state
   private targetX: number;
@@ -22,7 +23,7 @@ export class RemotePlayer {
   private readonly MAX_TRAILS: number = 8;
   private wasDashing: boolean = false;
   
-  constructor(scene: Phaser.Scene, id: string, x: number, y: number, team: "red" | "blue") {
+  constructor(scene: Phaser.Scene, id: string, x: number, y: number, team: "red" | "blue", name?: string) {
     this.scene = scene;
     this.id = id;
     this.team = team;
@@ -50,6 +51,15 @@ export class RemotePlayer {
     // Create gun visual
     this.gun = scene.add.rectangle(0, 0, 24, 3, 0x000000);
     this.gun.setOrigin(0, 0.5);
+    
+    // Create name text
+    this.nameText = scene.add.text(x, y - 50, name || "Unknown", {
+      fontSize: '14px',
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 2
+    });
+    this.nameText.setOrigin(0.5);
   }
   
   private createHealthBar(): void {
@@ -155,17 +165,24 @@ export class RemotePlayer {
       }
     }
     
+    // Update name position
+    if (this.nameText && this.nameText.active) {
+      this.nameText.setPosition(this.sprite.x, this.sprite.y - 50);
+    }
+    
     // Handle death state
     if (isDead) {
       this.sprite.setAlpha(0.3);
       if (this.gun && this.gun.active) this.gun.setVisible(false);
       if (this.healthBar && this.healthBar.active) this.healthBar.setVisible(false);
       if (this.healthBarBg && this.healthBarBg.active) this.healthBarBg.setVisible(false);
+      if (this.nameText && this.nameText.active) this.nameText.setVisible(false);
     } else {
       this.sprite.setAlpha(1);
       if (this.gun && this.gun.active) this.gun.setVisible(true);
       if (this.healthBar && this.healthBar.active) this.healthBar.setVisible(true);
       if (this.healthBarBg && this.healthBarBg.active) this.healthBarBg.setVisible(true);
+      if (this.nameText && this.nameText.active) this.nameText.setVisible(true);
     }
     
     // Update dash tint
@@ -248,6 +265,9 @@ export class RemotePlayer {
     }
     if (this.gun && this.gun.active) {
       this.gun.destroy();
+    }
+    if (this.nameText && this.nameText.active) {
+      this.nameText.destroy();
     }
   }
 } 

@@ -1,20 +1,14 @@
 import { Room, Client } from "colyseus";
 import { TeamBattleState } from "./schema/TeamBattleState";
+import { Player } from "./schema/Player";
 import { Bullet } from "./schema/Bullet";
+import { checkBulletPlatformCollision } from "../../../shared/WorldGeometry";
 
 export class TeamBattleRoom extends Room<TeamBattleState> {
-  maxClients = 8; // 4v4 maximum
-  patchRate = 60; // 60 FPS
+  maxClients = 8; // 4v4
 
   onCreate(_options: any) {
     this.setState(new TeamBattleState());
-    
-    // Set initial metadata
-    this.setMetadata({
-      redCount: 0,
-      blueCount: 0,
-      gameState: "waiting"
-    });
     
     // Set up message handlers
     this.onMessage("move", (client, data) => {
@@ -77,31 +71,34 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
         }, 3000);
       }
     });
-
-    // Set up game loop (60 FPS)
-    this.setSimulationInterval((deltaTime) => {
-      this.update(deltaTime);
-    }, 1000 / 60);
-
+    
+    // Set up tick rate (60 FPS)
+    this.setSimulationInterval((deltaTime) => this.update(deltaTime), 1000 / 60);
+    
+    // Update room metadata
+    this.updateRoomMetadata();
+    
     console.log(`TeamBattleRoom created with ID: ${this.roomId}`);
   }
 
   onJoin(client: Client, options: any) {
     console.log(`Room ${this.roomId}: Player ${client.sessionId} joined!`);
     
-    const player = this.state.addPlayer(client.sessionId);
+    const playerName = options?.name || `Player${client.sessionId.substring(0, 4)}`;
+    const player = this.state.addPlayer(client.sessionId, playerName);
     
     // Log current state
     console.log(`Room ${this.roomId}: Current players count: ${this.state.players.size}`);
     this.state.players.forEach((p, id) => {
-      console.log(`  - Player ${id}: team ${p.team}, pos (${p.x}, ${p.y})`);
+      console.log(`  - Player ${id}: team ${p.team}, pos (${p.x}, ${p.y}), name: ${p.name}`);
     });
     
     // Notify client of their team
     client.send("team-assigned", { 
       team: player.team,
       playerId: client.sessionId,
-      roomId: this.roomId
+      roomId: this.roomId,
+      playerName: player.name
     });
     
     // Update metadata (including potential game state change)
@@ -177,26 +174,9 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
         return;
       }
       
-      // Update bullet position
-      const deltaSeconds = deltaTime / 1000;
-      const movement = bullet.velocityX * deltaSeconds;
-      
-      if (isNaN(movement)) {
-        console.error(`NaN movement for bullet ${bullet.id}: velocityX=${bullet.velocityX}, deltaSeconds=${deltaSeconds}`);
-        bulletsToRemove.push(index);
-        return;
-      }
-      
-      bullet.x += movement;
-      
-      // Remove bullets that are off-screen
-      if (bullet.x < -100 || bullet.x > 3100) {
-        bulletsToRemove.push(index);
-        return;
-      }
-      
-      // Check collision with players
-      this.state.players.forEach(player => {
+      // First check collision with players at current position
+      let bulletHit = false;
+      for (const player of this.state.players.values()) {
         if (player.id !== bullet.ownerId && 
             player.team !== bullet.ownerTeam && 
             !player.isDead &&
@@ -211,12 +191,15 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
             player.health = 0;
             player.respawnTimer = 3000; // 3 seconds
             
+            // Get killer player for the name
+            const killer = this.state.players.get(bullet.ownerId);
+            
             // Broadcast kill event
             this.broadcast("player-killed", {
               killerId: bullet.ownerId,
               victimId: player.id,
-              killerName: `Player ${bullet.ownerId.substring(0, 4)}`,
-              victimName: `Player ${player.id.substring(0, 4)}`
+              killerName: killer?.name || "Unknown",
+              victimName: player.name
             });
             
             // Update score
@@ -238,10 +221,43 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
             }
           }
           
-          // Mark bullet for removal
+          // Mark bullet for removal and stop checking other players
+          bulletsToRemove.push(index);
+          bulletHit = true;
+          break;
+        }
+      }
+      
+      // If bullet didn't hit anyone, update its position
+      if (!bulletHit) {
+        // Update bullet position
+        const deltaSeconds = deltaTime / 1000;
+        const movement = bullet.velocityX * deltaSeconds;
+        
+        if (isNaN(movement)) {
+          console.error(`NaN movement for bullet ${bullet.id}: velocityX=${bullet.velocityX}, deltaSeconds=${deltaSeconds}`);
+          bulletsToRemove.push(index);
+          return;
+        }
+        
+        bullet.x += movement;
+        
+        // Check collision with platforms
+        const platformHit = checkBulletPlatformCollision({
+          x: bullet.x,
+          y: bullet.y,
+          width: 10,
+          height: 6
+        });
+        
+        if (platformHit) {
+          // Bullet hit a platform, mark for removal
+          bulletsToRemove.push(index);
+        } else if (bullet.x < -100 || bullet.x > 3100) {
+          // Remove bullets that are off-screen
           bulletsToRemove.push(index);
         }
-      });
+      }
     });
     
     // Remove bullets that hit or went off-screen

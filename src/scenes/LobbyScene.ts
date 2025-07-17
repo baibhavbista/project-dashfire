@@ -20,6 +20,12 @@ export class LobbyScene extends Phaser.Scene {
   private selectedRoomIndex: number = -1;
   private roomButtons: Phaser.GameObjects.Rectangle[] = [];
   private roomTexts: Phaser.GameObjects.Text[] = [];
+  private roomListContainer?: Phaser.GameObjects.Container;
+  private refreshButton?: Phaser.GameObjects.Rectangle;
+  private createButton?: Phaser.GameObjects.Rectangle;
+  private rooms: RoomListing[] = [];
+  private playerNameInput?: Phaser.GameObjects.DOMElement;
+  private playerName: string = "";
   
   constructor() {
     super({ key: 'LobbyScene' });
@@ -34,7 +40,7 @@ export class LobbyScene extends Phaser.Scene {
     
     // Instructions
     this.add.text(512, 100, 'Select a room to join or create a new one', { 
-      fontSize: '16px', 
+      fontSize: '16px',
       color: '#cccccc' 
     }).setOrigin(0.5);
     
@@ -44,10 +50,36 @@ export class LobbyScene extends Phaser.Scene {
       color: '#ffff00' 
     }).setOrigin(0.5);
     
+    // Player name input
+    this.add.text(512, 170, 'Your Name:', {
+      fontSize: '16px',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+    
+    // Generate random default name
+    this.playerName = `Player${Math.floor(Math.random() * 10000)}`;
+    
+    // Name display (acts as input field)
+    const nameText = this.add.text(512, 195, this.playerName, {
+      fontSize: '20px',
+      color: '#00ff00',
+      backgroundColor: '#333333',
+      padding: { x: 20, y: 10 }
+    }).setOrigin(0.5)
+      .setInteractive()
+      .on('pointerdown', () => {
+        // Simple name input using browser prompt
+        const newName = prompt('Enter your name:', this.playerName);
+        if (newName && newName.trim().length > 0) {
+          this.playerName = newName.trim().substring(0, 20); // Limit to 20 chars
+          nameText.setText(this.playerName);
+        }
+      });
+    
     // Room list header
-    this.add.text(300, 180, 'Available Rooms:', { 
-      fontSize: '20px', 
-      color: '#ffffff' 
+    this.add.text(300, 240, 'Available Rooms:', { 
+      fontSize: '20px',
+      color: '#ffffff'
     });
     
     // Create new room button
@@ -115,7 +147,7 @@ export class LobbyScene extends Phaser.Scene {
       
       // Display rooms
       this.availableRooms.forEach((room, index) => {
-        const y = 220 + (index * 60);
+        const y = 280 + (index * 60);
         
         // Room button
         const button = this.add.rectangle(512, y, 600, 50, 0x333333)
@@ -165,7 +197,7 @@ export class LobbyScene extends Phaser.Scene {
     this.statusText?.setColor('#ffff00');
     
     try {
-      await this.networkManager.connect('create');
+      await this.networkManager.connect('create', { name: this.playerName });
       this.transitionToGame();
     } catch (error) {
       console.error('Failed to create room:', error);
@@ -181,7 +213,7 @@ export class LobbyScene extends Phaser.Scene {
     this.statusText?.setColor('#ffff00');
     
     try {
-      await this.networkManager.connect('joinById', { roomId });
+      await this.networkManager.connect('joinById', { roomId, name: this.playerName });
       this.transitionToGame();
     } catch (error) {
       console.error('Failed to join room:', error);
