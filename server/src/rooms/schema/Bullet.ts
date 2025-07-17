@@ -10,6 +10,16 @@ export class Bullet extends Schema {
 
   constructor(id: string, x: number, y: number, velocityX: number, ownerId: string, ownerTeam: "red" | "blue") {
     super();
+    
+    // Validate inputs
+    if (isNaN(x) || isNaN(y) || isNaN(velocityX)) {
+      console.error("Bullet constructor received NaN values:", { id, x, y, velocityX });
+      // Set safe defaults
+      x = isNaN(x) ? 0 : x;
+      y = isNaN(y) ? 0 : y;
+      velocityX = isNaN(velocityX) ? 0 : velocityX;
+    }
+    
     this.id = id;
     this.x = x;
     this.y = y;

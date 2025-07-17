@@ -668,11 +668,27 @@ export class GameScene extends Phaser.Scene {
         // Send shoot to server if multiplayer
         if (this.isMultiplayer && this.networkManager) {
           const direction = this.player.flipX ? -1 : 1;
-          this.networkManager.sendShoot({
-            x: this.player.x + (24 * direction * 0.9),
-            y: this.player.y,
-            velocityX: 700 * direction
-          });
+          const bulletX = this.player.x + (24 * direction * 0.9);
+          const bulletY = this.player.y;
+          const bulletVelocityX = 700 * direction;
+          
+          // Validate bullet data before sending
+          if (isNaN(bulletX) || isNaN(bulletY) || isNaN(bulletVelocityX)) {
+            console.error("Invalid bullet data detected:", {
+              playerX: this.player.x,
+              playerY: this.player.y,
+              direction: direction,
+              bulletX: bulletX,
+              bulletY: bulletY,
+              bulletVelocityX: bulletVelocityX
+            });
+          } else {
+            this.networkManager.sendShoot({
+              x: bulletX,
+              y: bulletY,
+              velocityX: bulletVelocityX
+            });
+          }
         }
       }
     }

@@ -38,6 +38,12 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
     this.onMessage("shoot", (client, data) => {
       const player = this.state.players.get(client.sessionId);
       if (player && !player.isDead && this.state.gameState === "playing") {
+        // Validate bullet data
+        if (!data || isNaN(data.x) || isNaN(data.y) || isNaN(data.velocityX)) {
+          console.error(`Invalid shoot data from ${client.sessionId}:`, data);
+          return;
+        }
+        
         // Create bullet
         const bulletId = `${client.sessionId}-${Date.now()}`;
         const bullet = new Bullet(
@@ -48,9 +54,21 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
           client.sessionId,
           player.team
         );
+        
+        // Final validation before adding
+        if (isNaN(bullet.x) || isNaN(bullet.y) || isNaN(bullet.velocityX)) {
+          console.error(`Bullet creation resulted in NaN values:`, {
+            x: bullet.x,
+            y: bullet.y,
+            velocityX: bullet.velocityX,
+            id: bullet.id
+          });
+          return;
+        }
+        
         this.state.bullets.push(bullet);
         
-        // Remove bullet after 3 seconds
+        // Remove bullet after 3 seconds (but check if it still exists)
         this.clock.setTimeout(() => {
           const index = this.state.bullets.findIndex(b => b.id === bulletId);
           if (index !== -1) {
@@ -117,6 +135,12 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
   update(deltaTime: number) {
     // Only update if game is playing
     if (this.state.gameState !== "playing") return;
+    
+    // Defensive check for deltaTime
+    if (!deltaTime || isNaN(deltaTime)) {
+      console.error("Invalid deltaTime:", deltaTime);
+      return;
+    }
 
     // Update game time
     this.state.gameTime += deltaTime;
@@ -146,8 +170,24 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
     const bulletsToRemove: number[] = [];
     
     this.state.bullets.forEach((bullet, index) => {
+      // Defensive checks for bullet data
+      if (isNaN(bullet.x) || isNaN(bullet.velocityX)) {
+        console.error(`Invalid bullet data: x=${bullet.x}, velocityX=${bullet.velocityX}, id=${bullet.id}`);
+        bulletsToRemove.push(index);
+        return;
+      }
+      
       // Update bullet position
-      bullet.x += bullet.velocityX * (deltaTime / 1000);
+      const deltaSeconds = deltaTime / 1000;
+      const movement = bullet.velocityX * deltaSeconds;
+      
+      if (isNaN(movement)) {
+        console.error(`NaN movement for bullet ${bullet.id}: velocityX=${bullet.velocityX}, deltaSeconds=${deltaSeconds}`);
+        bulletsToRemove.push(index);
+        return;
+      }
+      
+      bullet.x += movement;
       
       // Remove bullets that are off-screen
       if (bullet.x < -100 || bullet.x > 3100) {
@@ -206,8 +246,11 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
     
     // Remove bullets that hit or went off-screen
     bulletsToRemove.sort((a, b) => b - a); // Sort in reverse order
-    bulletsToRemove.forEach(index => {
-      this.state.bullets.splice(index, 1);
+    const uniqueIndices = [...new Set(bulletsToRemove)]; // Remove duplicates
+    uniqueIndices.forEach(index => {
+      if (index >= 0 && index < this.state.bullets.length) {
+        this.state.bullets.splice(index, 1);
+      }
     });
   }
 } 
