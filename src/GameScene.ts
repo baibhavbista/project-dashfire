@@ -6,14 +6,13 @@ import { RemotePlayer } from './network/RemotePlayer';
 import { LocalPlayer } from './entities/LocalPlayer';
 import { NetworkManager } from './network/NetworkManager';
 import { COLORS } from './config/Colors';
-import { GAME_CONFIG, Team } from './config/GameConfig';
+import { GAME_CONFIG } from './config/GameConfig';
 import { GameHUD } from './ui/GameHUD';
 import { KillFeed } from './ui/KillFeed';
 import { EffectsSystem } from './systems/EffectsSystem';
-import { PlayerTextureManager } from './entities/PlayerTextureManager';
-import { PlayerBulletInterface } from './entities/PlayerBulletInterface';
 import { WorldBuilder } from './systems/WorldBuilder';
 import { MultiplayerCoordinator } from './systems/MultiplayerCoordinator';
+import { PlayerFactory } from './factories/PlayerFactory';
 
 // Team colors now imported from config/Colors.ts
 
@@ -38,14 +37,6 @@ export class GameScene extends Phaser.Scene {
   private isDead: boolean = false;
   private redScore: number = 0;
   private blueScore: number = 0;
-
-  // Animation constants
-  private readonly MAX_STRETCH: number = 1.20;
-  private readonly MAX_SQUASH: number = 0.85;
-  private readonly ANTICIPATION_SQUASH: number = 0.95;
-  private readonly ANTICIPATION_DURATION: number = 50; // ~3 frames at 60fps
-  private readonly STRETCH_SPEED: number = 15; // How fast we interpolate to target
-  private readonly LANDING_DURATION: number = 100; // Recovery time after landing
 
   constructor() {
     super({ key: 'GameScene' });
@@ -95,55 +86,13 @@ export class GameScene extends Phaser.Scene {
     this.worldBuilder = new WorldBuilder(this);
     this.platforms = this.worldBuilder.buildWorld();
 
-    // Create player - clean rectangle design with guaranteed visible texture
-    
-    // Create local player
-    const playerId = 'local-player';
-    
-    // Determine initial team - check if we already have one from NetworkManager
-    let initialTeam: Team = 'red'; // Default
-    let useNeutralTexture = true;
-    let initialX = 100;
-    let initialY = 1350;
-    
-    if (this.isMultiplayer && this.networkManager) {
-      const assignedTeam = this.networkManager.getPlayerTeam();
-      if (assignedTeam) {
-        initialTeam = assignedTeam;
-        useNeutralTexture = false;
-        console.log("Player already has team:", assignedTeam);
-      }
-    } else {
-      // Single-player mode: random team and position
-      initialTeam = Math.random() < 0.5 ? 'red' : 'blue';
-      useNeutralTexture = false; // Always have a team in single-player
-      
-      // Use WorldBuilder for spawn position
-      const spawnPos = this.worldBuilder.getRandomSpawnPosition();
-      initialX = spawnPos.x;
-      initialY = spawnPos.y;
-      
-      console.log(`Single-player mode: Random team ${initialTeam} at position (${initialX}, ${initialY})`);
-    }
-    
-    // Create a neutral gray texture for unassigned players (only if needed)
-    if (useNeutralTexture) {
-      PlayerTextureManager.getPlayerTexture(this, 'neutral');
-    }
-    
-    this.player = new LocalPlayer(
+    // Create local player using factory
+    this.player = PlayerFactory.createLocalPlayer(
       this,
-      playerId,
-      initialX,
-      initialY,
-      initialTeam,
-      'You'
+      this.worldBuilder,
+      this.networkManager,
+      this.isMultiplayer
     );
-    
-    // Only override to neutral texture if we don't have a team yet
-    if (useNeutralTexture) {
-      this.player.setTexture('neutral-player');
-    }
     
     // Add collision with platforms
     this.physics.add.collider(this.player, this.platforms);
@@ -255,18 +204,13 @@ export class GameScene extends Phaser.Scene {
         
         // Send shoot to server if multiplayer
         if (this.isMultiplayer && this.networkManager) {
-          // Use shared bullet interface for consistent positioning
-          const bulletData = PlayerBulletInterface.getBulletSpawnData(
-            data.x,
-            data.y,
-            data.direction,
-            data.team as Team
-          );
+          const bulletSpeed = this.player.isDashing ? 1000 : 600;
+          const velocityX = data.direction * bulletSpeed;
           
           this.networkManager.sendShoot({
-            x: bulletData.x,
-            y: bulletData.y,
-            velocityX: bulletData.velocityX
+            x: data.x,
+            y: data.y,
+            velocityX: velocityX
           });
         }
       }
