@@ -171,6 +171,12 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
     // Simple bullet collision (will be improved later)
     const bulletsToRemove: number[] = [];
     
+    // Player hitbox dimensions with small buffer for tunneling prevention
+    const PLAYER_HALF_WIDTH = 18;  // 32px width / 2 + 2px buffer
+    const PLAYER_HALF_HEIGHT = 26; // 48px height / 2 + 2px buffer
+    const BULLET_HALF_WIDTH = SHARED_CONFIG.BULLET.WIDTH / 2;
+    const BULLET_HALF_HEIGHT = SHARED_CONFIG.BULLET.HEIGHT / 2;
+    
     this.state.bullets.forEach((bullet, index) => {
       // Defensive checks for bullet data
       if (isNaN(bullet.x) || isNaN(bullet.velocityX)) {
@@ -184,52 +190,58 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
       for (const player of this.state.players.values()) {
         if (player.id !== bullet.ownerId && 
             player.team !== bullet.ownerTeam && 
-            !player.isDead &&
-            Math.abs(player.x - bullet.x) < 20 &&
-            Math.abs(player.y - bullet.y) < 24) {
+            !player.isDead) {
           
-          // Hit detected
-          player.health -= SHARED_CONFIG.BULLET.DAMAGE;
+          // Proper AABB collision check with buffer
+          const dx = Math.abs(player.x - bullet.x);
+          const dy = Math.abs(player.y - bullet.y);
           
-          if (player.health <= 0) {
-            player.isDead = true;
-            player.health = 0;
-            player.respawnTimer = 3000; // 3 seconds
+          if (dx < (PLAYER_HALF_WIDTH + BULLET_HALF_WIDTH) &&
+              dy < (PLAYER_HALF_HEIGHT + BULLET_HALF_HEIGHT)) {
             
-            // Get killer player for the name
-            const killer = this.state.players.get(bullet.ownerId);
+            // Hit detected
+            player.health -= SHARED_CONFIG.BULLET.DAMAGE;
             
-            // Broadcast kill event
-            this.broadcast("player-killed", {
-              killerId: bullet.ownerId,
-              victimId: player.id,
-              killerName: killer?.name || "Unknown",
-              victimName: player.name
-            });
+            if (player.health <= 0) {
+              player.isDead = true;
+              player.health = 0;
+              player.respawnTimer = 3000; // 3 seconds
             
-            // Update score
-            if (bullet.ownerTeam === "red") {
-              this.state.scores.red++;
-            } else {
-              this.state.scores.blue++;
-            }
-            
-            // Check win condition
-            if (this.state.scores.red >= 30 || this.state.scores.blue >= 30) {
-              this.state.gameState = "ended";
-              this.state.winningTeam = this.state.scores.red >= 30 ? "red" : "blue";
-              this.updateRoomMetadata();
-              this.broadcast("match-ended", {
-                winningTeam: this.state.winningTeam,
-                scores: this.state.scores
+              // Get killer player for the name
+              const killer = this.state.players.get(bullet.ownerId);
+              
+              // Broadcast kill event
+              this.broadcast("player-killed", {
+                killerId: bullet.ownerId,
+                victimId: player.id,
+                killerName: killer?.name || "Unknown",
+                victimName: player.name
               });
+              
+              // Update score
+              if (bullet.ownerTeam === "red") {
+                this.state.scores.red++;
+              } else {
+                this.state.scores.blue++;
+              }
+              
+              // Check win condition
+              if (this.state.scores.red >= 30 || this.state.scores.blue >= 30) {
+                this.state.gameState = "ended";
+                this.state.winningTeam = this.state.scores.red >= 30 ? "red" : "blue";
+                this.updateRoomMetadata();
+                this.broadcast("match-ended", {
+                  winningTeam: this.state.winningTeam,
+                  scores: this.state.scores
+                });
+              }
             }
+            
+            // Mark bullet for removal and stop checking other players
+            bulletsToRemove.push(index);
+            bulletHit = true;
+            break;
           }
-          
-          // Mark bullet for removal and stop checking other players
-          bulletsToRemove.push(index);
-          bulletHit = true;
-          break;
         }
       }
       
