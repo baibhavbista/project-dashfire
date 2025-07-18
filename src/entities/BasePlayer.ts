@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
-import { getTeamColors } from '../config/Colors';
 import { GAME_CONFIG, Team } from '../config/GameConfig';
 import { AnimationController } from '../systems/AnimationController';
+import { PlayerTextureManager } from './PlayerTextureManager';
 
 /**
  * Base player class containing shared functionality for both local and remote players
@@ -44,31 +44,8 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
     playerName: string = 'Unknown',
     isLocal: boolean = false
   ) {
-    // Create the sprite with team-colored texture
-    const teamColors = getTeamColors(team);
-    const textureKey = `${team}-player`;
-    
-    // Ensure texture exists, if not create it
-    if (!scene.textures.exists(textureKey)) {
-      const graphics = scene.add.graphics();
-      
-      // Draw player body
-      graphics.fillStyle(teamColors.PRIMARY, 1);
-      graphics.fillRect(0, 0, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
-      
-      // Draw integrated gun on the right side
-      graphics.fillStyle(0x666666, 1); // Gun color
-      const gunWidth = 20;
-      const gunHeight = 4;
-      const gunX = GAME_CONFIG.PLAYER.WIDTH - 4; // Right edge of player
-      const gunY = GAME_CONFIG.PLAYER.HEIGHT / 2 - 8; // Middle-ish of player
-      graphics.fillRect(gunX, gunY, gunWidth, gunHeight);
-      
-      // Generate texture with increased width to accommodate gun
-      graphics.generateTexture(textureKey, GAME_CONFIG.PLAYER.WIDTH + gunWidth - 4, GAME_CONFIG.PLAYER.HEIGHT);
-      graphics.destroy();
-    }
-    
+    // Get or create the sprite texture using centralized manager
+    const textureKey = PlayerTextureManager.getPlayerTexture(scene, team);
     super(scene, x, y, textureKey);
     
     this.id = id;

@@ -6,11 +6,13 @@ import { RemotePlayer } from './network/RemotePlayer';
 import { LocalPlayer } from './entities/LocalPlayer';
 import { NetworkManager, PlayerData, BulletData } from './network/NetworkManager';
 import { ARENA_WIDTH, ARENA_HEIGHT, MAIN_PLATFORM, ELEVATED_PLATFORMS } from '../shared/WorldGeometry';
-import { COLORS, getTeamColors } from './config/Colors';
+import { COLORS } from './config/Colors';
 import { GAME_CONFIG, getSpawnPosition, Team } from './config/GameConfig';
 import { GameHUD } from './ui/GameHUD';
 import { KillFeed } from './ui/KillFeed';
 import { EffectsSystem } from './systems/EffectsSystem';
+import { PlayerTextureManager } from './entities/PlayerTextureManager';
+import { PlayerBulletInterface } from './entities/PlayerBulletInterface';
 
 // Team colors now imported from config/Colors.ts
 
@@ -160,26 +162,7 @@ export class GameScene extends Phaser.Scene {
     
     // Create a neutral gray texture for unassigned players (only if needed)
     if (useNeutralTexture) {
-      const neutralKey = 'neutral-player';
-      if (!this.textures.exists(neutralKey)) {
-        const graphics = this.add.graphics();
-        
-        // Draw player body
-        graphics.fillStyle(0x888888, 1); // Gray color for unassigned
-        graphics.fillRect(0, 0, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
-        
-        // Draw integrated gun on the right side
-        graphics.fillStyle(0x666666, 1); // Gun color
-        const gunWidth = 20;
-        const gunHeight = 4;
-        const gunX = GAME_CONFIG.PLAYER.WIDTH - 4; // Right edge of player
-        const gunY = GAME_CONFIG.PLAYER.HEIGHT / 2 - 8; // Middle-ish of player
-        graphics.fillRect(gunX, gunY, gunWidth, gunHeight);
-        
-        // Generate texture with increased width to accommodate gun
-        graphics.generateTexture(neutralKey, GAME_CONFIG.PLAYER.WIDTH + gunWidth - 4, GAME_CONFIG.PLAYER.HEIGHT);
-        graphics.destroy();
-      }
+      PlayerTextureManager.getPlayerTexture(this, 'neutral');
     }
     
     this.player = new LocalPlayer(
@@ -284,17 +267,18 @@ export class GameScene extends Phaser.Scene {
         
         // Send shoot to server if multiplayer
         if (this.isMultiplayer && this.networkManager) {
-          // Gun is integrated into sprite
-          const bulletX = data.direction < 0 
-            ? data.x - 24  // Gun on left when flipped (gun tip at 24px from center)
-            : data.x + 24; // Gun on right when not flipped (gun tip at 24px from center)
-          const bulletY = data.y - 32; // Gun Y offset (from bottom of sprite)
-          const bulletVelocityX = GAME_CONFIG.WEAPON.BULLET_SPEED * data.direction;
+          // Use shared bullet interface for consistent positioning
+          const bulletData = PlayerBulletInterface.getBulletSpawnData(
+            data.x,
+            data.y,
+            data.direction,
+            data.team as Team
+          );
           
           this.networkManager.sendShoot({
-            x: bulletX,
-            y: bulletY,
-            velocityX: bulletVelocityX
+            x: bulletData.x,
+            y: bulletData.y,
+            velocityX: bulletData.velocityX
           });
         }
       }
@@ -398,39 +382,14 @@ export class GameScene extends Phaser.Scene {
       // Update player team
       this.player.team = data.team;
       
-      // Create the correct team texture if it doesn't exist
-      const textureKey = `${data.team}-player`;
-      const teamColors = getTeamColors(data.team);
-      
-      // Always recreate the texture to ensure it's fresh
-      const graphics = this.add.graphics();
-      
-      // Draw player body
-      graphics.fillStyle(teamColors.PRIMARY, 1);
-      graphics.fillRect(0, 0, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
-      
-      // Draw integrated gun on the right side
-      graphics.fillStyle(0x666666, 1); // Gun color
-      const gunWidth = 20;
-      const gunHeight = 4;
-      const gunX = GAME_CONFIG.PLAYER.WIDTH - 4; // Right edge of player
-      const gunY = GAME_CONFIG.PLAYER.HEIGHT / 2 - 8; // Middle-ish of player
-      graphics.fillRect(gunX, gunY, gunWidth, gunHeight);
-      
-      // If texture exists, remove it first
-      if (this.textures.exists(textureKey)) {
-        this.textures.remove(textureKey);
-      }
-      
-      // Generate texture with increased width to accommodate gun
-      graphics.generateTexture(textureKey, GAME_CONFIG.PLAYER.WIDTH + gunWidth - 4, GAME_CONFIG.PLAYER.HEIGHT);
-      graphics.destroy();
+      // Get the team texture using centralized manager
+      const textureKey = PlayerTextureManager.getPlayerTexture(this, data.team);
       
       // Force texture update
       this.player.setTexture(textureKey);
       this.player.setFrame(0); // Force frame refresh
       
-      console.log(`Texture updated to: ${textureKey}, color: 0x${teamColors.PRIMARY.toString(16)}`);
+      console.log(`Texture updated to: ${textureKey}`);
       
       // Teleport to team spawn point
       const spawnPos = getSpawnPosition(data.team);
@@ -604,33 +563,8 @@ export class GameScene extends Phaser.Scene {
       // Update the player's team and texture
       this.player.team = team;
       
-      // Create and set the correct team texture
-      const textureKey = `${team}-player`;
-      const teamColors = getTeamColors(team);
-      
-      // Always recreate the texture to ensure it's fresh
-      const graphics = this.add.graphics();
-      
-      // Draw player body
-      graphics.fillStyle(teamColors.PRIMARY, 1);
-      graphics.fillRect(0, 0, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
-      
-      // Draw integrated gun on the right side
-      graphics.fillStyle(0x666666, 1); // Gun color
-      const gunWidth = 20;
-      const gunHeight = 4;
-      const gunX = GAME_CONFIG.PLAYER.WIDTH - 4; // Right edge of player
-      const gunY = GAME_CONFIG.PLAYER.HEIGHT / 2 - 8; // Middle-ish of player
-      graphics.fillRect(gunX, gunY, gunWidth, gunHeight);
-      
-      // If texture exists, remove it first
-      if (this.textures.exists(textureKey)) {
-        this.textures.remove(textureKey);
-      }
-      
-      // Generate texture with increased width to accommodate gun
-      graphics.generateTexture(textureKey, GAME_CONFIG.PLAYER.WIDTH + gunWidth - 4, GAME_CONFIG.PLAYER.HEIGHT);
-      graphics.destroy();
+      // Get the team texture using centralized manager
+      const textureKey = PlayerTextureManager.getPlayerTexture(this, team);
       
       // Force texture update
       this.player.setTexture(textureKey);
@@ -685,30 +619,7 @@ export class GameScene extends Phaser.Scene {
     
     // Reset player to red team and texture
     this.player.team = 'red';
-    const textureKey = 'red-player';
-    
-    // Ensure red texture exists with gun
-    if (!this.textures.exists(textureKey)) {
-      const teamColors = getTeamColors('red');
-      const graphics = this.add.graphics();
-      
-      // Draw player body
-      graphics.fillStyle(teamColors.PRIMARY, 1);
-      graphics.fillRect(0, 0, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
-      
-      // Draw integrated gun on the right side
-      graphics.fillStyle(0x666666, 1); // Gun color
-      const gunWidth = 20;
-      const gunHeight = 4;
-      const gunX = GAME_CONFIG.PLAYER.WIDTH - 4; // Right edge of player
-      const gunY = GAME_CONFIG.PLAYER.HEIGHT / 2 - 8; // Middle-ish of player
-      graphics.fillRect(gunX, gunY, gunWidth, gunHeight);
-      
-      // Generate texture with increased width to accommodate gun
-      graphics.generateTexture(textureKey, GAME_CONFIG.PLAYER.WIDTH + gunWidth - 4, GAME_CONFIG.PLAYER.HEIGHT);
-      graphics.destroy();
-    }
-    
+    const textureKey = PlayerTextureManager.getPlayerTexture(this, 'red');
     this.player.setTexture(textureKey);
     
     // Destroy multiplayer UI

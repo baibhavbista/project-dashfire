@@ -1,21 +1,19 @@
 import Phaser from 'phaser';
 import { BulletPool } from './BulletPool';
+import { PlayerBulletInterface } from './entities/PlayerBulletInterface';
+import { BasePlayer } from './entities/BasePlayer';
 
 export class WeaponSystem {
   private scene: Phaser.Scene;
-  private player: Phaser.Physics.Arcade.Sprite;
+  private player: BasePlayer;
   private bulletPool: BulletPool;
   private muzzleFlash?: Phaser.GameObjects.Arc;
   
   private canShoot: boolean = true;
   private shootCooldown: number = 0;
   private readonly SHOOT_COOLDOWN_MS: number = 200;
-  // Gun is now integrated into sprite, these define where bullets spawn
-  private readonly GUN_LENGTH: number = 20;
-  private readonly GUN_OFFSET_X: number = 24; // From player center to gun tip (texture is 48px wide, center at 24px, gun tip at 48px)
-  private readonly GUN_OFFSET_Y: number = -32; // Vertical offset to gun (from bottom of sprite)
 
-  constructor(scene: Phaser.Scene, player: Phaser.Physics.Arcade.Sprite) {
+  constructor(scene: Phaser.Scene, player: BasePlayer) {
     this.scene = scene;
     this.player = player;
     this.bulletPool = new BulletPool(scene);
@@ -46,15 +44,21 @@ export class WeaponSystem {
 
     const direction = this.player.flipX ? -1 : 1;
     
-    // Calculate bullet spawn position from integrated gun
-    const bulletX = this.player.flipX 
-      ? this.player.x - this.GUN_OFFSET_X  // Gun on left when flipped
-      : this.player.x + this.GUN_OFFSET_X; // Gun on right normally
-    const bulletY = this.player.y + this.GUN_OFFSET_Y;
+    // Use shared bullet interface for consistent positioning
+    const bulletData = PlayerBulletInterface.getBulletSpawnData(
+      this.player.x,
+      this.player.y,
+      direction,
+      this.player.team
+    );
     
-    // Fire bullet with team color
-    const bulletColor = teamColor || 0xFF6B6B; // Default to red glow if no team color
-    const bullet = this.bulletPool.fire(bulletX, bulletY, direction, bulletColor);
+    // Fire bullet with calculated position and color
+    const bullet = this.bulletPool.fire(
+      bulletData.x, 
+      bulletData.y, 
+      direction, 
+      teamColor || bulletData.color
+    );
     
     if (bullet) {
       // Set cooldown
@@ -62,7 +66,7 @@ export class WeaponSystem {
       this.shootCooldown = this.SHOOT_COOLDOWN_MS;
       
       // Show muzzle flash
-      this.showMuzzleFlash(bulletX, bulletY);
+      this.showMuzzleFlash(bulletData.x, bulletData.y);
       
       return true;
     }
