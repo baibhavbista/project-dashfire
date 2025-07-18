@@ -31,6 +31,9 @@ export class LocalPlayer extends BasePlayer {
   // Previous jump state for edge detection
   private wasJumpPressed: boolean = false;
   
+  // Shooting cooldown
+  private lastShootTime: number = 0;
+  
   constructor(
     scene: Phaser.Scene, 
     id: string,
@@ -51,6 +54,9 @@ export class LocalPlayer extends BasePlayer {
     this.movementState = MovementSystem.createMovementState();
     this.dashState = MovementSystem.createDashState();
     
+    // Set initial grounded state
+    this.movementState.isGrounded = true;
+    
     // Create event emitter for communicating with GameScene
     this.events = new Phaser.Events.EventEmitter();
     
@@ -58,16 +64,19 @@ export class LocalPlayer extends BasePlayer {
     this.setupInput();
   }
   
+  /**
+   * Override landing animation event to emit event
+   */
+  protected onLandingSquash(): void {
+    this.events.emit('land');
+  }
+  
   private setupInput(): void {
-    if (!this.scene.input.keyboard) {
-      throw new Error('Keyboard input not available');
-    }
-    
-    this.cursors = this.scene.input.keyboard.createCursorKeys();
-    this.jumpKey = this.scene.input.keyboard.addKey(INPUT_CONFIG.ACTIONS.JUMP);
-    this.dashKey = this.scene.input.keyboard.addKey(INPUT_CONFIG.ACTIONS.DASH);
-    this.shootKey = this.scene.input.keyboard.addKey(INPUT_CONFIG.ACTIONS.SHOOT_PRIMARY);
-    this.shootKeyAlt = this.scene.input.keyboard.addKey(INPUT_CONFIG.ACTIONS.SHOOT_SECONDARY);
+    this.cursors = this.scene.input.keyboard!.createCursorKeys();
+    this.jumpKey = this.scene.input.keyboard!.addKey(INPUT_CONFIG.ACTIONS.JUMP);
+    this.dashKey = this.scene.input.keyboard!.addKey(INPUT_CONFIG.ACTIONS.DASH);
+    this.shootKey = this.scene.input.keyboard!.addKey(INPUT_CONFIG.ACTIONS.SHOOT_PRIMARY);
+    this.shootKeyAlt = this.scene.input.keyboard!.addKey(INPUT_CONFIG.ACTIONS.SHOOT_SECONDARY);
   }
   
   update(time: number, delta: number): void {
@@ -99,15 +108,26 @@ export class LocalPlayer extends BasePlayer {
     this.handleShooting();
     
     // Detect state changes for events
-    this.detectStateChanges(input, body);
+    this.detectStateChanges(input);
     
     // Update facing direction
     if (this.movementState.facingDirection !== 0) {
       this.setFlipX(this.movementState.facingDirection < 0);
     }
     
-    // Update animations based on state
-    this.updateAnimationsFromState();
+    // Update animations through AnimationController
+    this.animationController.update(
+      body.velocity.x,
+      body.velocity.y,
+      this.movementState.isGrounded,
+      this.movementState.isDashing,  // Use MovementState's isDashing instead
+      delta
+    );
+    
+    // Create dash trails while dashing
+    if (this.movementState.isDashing && Math.random() < 0.8) {
+      this.createDashTrail();
+    }
     
     // Emit position update for networking
     this.events.emit('position-update', {
@@ -120,139 +140,124 @@ export class LocalPlayer extends BasePlayer {
   }
   
   private handleDashBuffering(body: Phaser.Physics.Arcade.Body, input: MovementInput, delta: number): void {
-    // Handle dash buffering
+    // Start buffering on dash press
+    if (input.dash && !this.dashBuffering && !this.movementState.canDash) {
+      this.dashBuffering = true;
+      this.dashBufferTime = 0;
+    }
+    
+    // Update buffer timer
     if (this.dashBuffering) {
       this.dashBufferTime += delta;
       
-      if (this.dashBufferTime >= GAME_CONFIG.PLAYER.DASH.BUFFER_WINDOW_MS) {
+      // Cancel buffer after window expires
+      if (this.dashBufferTime > GAME_CONFIG.PLAYER.DASH.BUFFER_WINDOW_MS) {
         this.dashBuffering = false;
-        this.dashBufferTime = 0;
-        this.tryDash(body, input);
       }
-    } else {
-      // Start dash buffer on key press
-      if (Phaser.Input.Keyboard.JustDown(this.dashKey) && 
-          this.movementState.canDash && 
-          this.movementState.dashCooldown <= 0 && 
-          !this.movementState.isDashing && 
-          !this.movementState.isGrounded) {
-        this.dashBuffering = true;
-        this.dashBufferTime = 0;
-      }
-    }
-  }
-  
-  private tryDash(body: Phaser.Physics.Arcade.Body, input: MovementInput): void {
-    if (this.movementSystem.startDash(body, input, this.movementState, this.dashState)) {
-      this._isDashing = true;
-      this.events.emit('dash-start');
       
-      // Schedule dash end
-      this.scene.time.delayedCall(GAME_CONFIG.PLAYER.DASH.DURATION, () => {
-        if (this._isDashing) {
-          this.endDashAnimation();
+      // Execute buffered dash when possible
+      if (this.movementState.canDash) {
+        if (this.movementSystem.startDash(body, input, this.movementState, this.dashState)) {
+          this.events.emit('dash-start');
+          this.dashBuffering = false;
         }
-      });
+      }
+    }
+    
+    // Normal dash execution (no buffering)
+    if (input.dash && this.movementState.canDash && !this.dashBuffering) {
+      if (this.movementSystem.startDash(body, input, this.movementState, this.dashState)) {
+        this.events.emit('dash-start');
+      }
     }
   }
   
-  private endDashAnimation(): void {
-    this._isDashing = false;
-    this.events.emit('dash-end');
+  private detectStateChanges(input: MovementInput): void {
+    // Jump events
+    if (input.jump && !this.wasJumpPressed && this.movementState.isGrounded) {
+      this.events.emit('jump');
+    }
+    
+    // Landing detection
+    if (!this.wasGrounded && this.movementState.isGrounded) {
+      this.wasGrounded = true;
+      // AnimationController will handle the landing animation
+    } else if (this.wasGrounded && !this.movementState.isGrounded) {
+      this.wasGrounded = false;
+    }
+    
+    // Dash end detection - use MovementState's isDashing
+    if (this.wasDashing && !this.movementState.isDashing) {
+      this.events.emit('dash-end');
+      this.wasDashing = false;
+      this._isDashing = false; // Sync local flag
+    } else if (!this.wasDashing && this.movementState.isDashing) {
+      this.wasDashing = true;
+      this._isDashing = true; // Sync local flag
+    }
+    
+    // Track jump button state
+    this.wasJumpPressed = input.jump;
   }
   
   private handleShooting(): void {
-    if (Phaser.Input.Keyboard.JustDown(this.shootKey) || 
-        Phaser.Input.Keyboard.JustDown(this.shootKeyAlt)) {
-      this.events.emit('shoot', {
-        x: this.x,
-        y: this.y,
-        direction: this.flipX ? -1 : 1,
-        team: this.team
-      });
-    }
-  }
-  
-  private detectStateChanges(input: MovementInput, body: Phaser.Physics.Arcade.Body): void {
-    // Jump detection
-    if (input.jump && !this.wasJumpPressed && this.movementState.isJumping) {
-      this.events.emit('jump');
-    }
-    this.wasJumpPressed = input.jump;
-    
-    // Landing detection
-    if (!this.wasGrounded && this.isGrounded && body.velocity.y > 50) {
-      this.createLandingSquash();
-      this.events.emit('land');
-    }
-    
-    // Update ground state for BasePlayer animations
-    this.wasGrounded = this.isGrounded;
-    this.isGrounded = this.movementState.isGrounded;
-  }
-  
-  private updateAnimationsFromState(): void {
-    const body = this.body as Phaser.Physics.Arcade.Body;
-    
-    // Update character animations from BasePlayer
-    this.updateCharacterAnimations(body.velocity.x);
-    
-    // Update jump animations
-    this.updateJumpAnimations(body.velocity.y);
-    
-    // Create dash trails while dashing
-    if (this._isDashing && Math.random() < 0.8) {
-      this.createDashTrail();
-    }
-  }
-  
-  private updateJumpAnimations(velocityY: number): void {
-    // Jump stretch/squash
-    if (!this.isGrounded && !this._isDashing) {
-      if (velocityY < 0) {
-        // Rising - stretch
-        const t = Math.min(-velocityY / 800, 1);
-        const stretchY = 1 + (GAME_CONFIG.ANIMATION.JUMP.MAX_STRETCH - 1) * t;
-        this.targetScaleY = stretchY;
-        this.targetScaleX = 1 / stretchY;
-      } else {
-        // Falling - compress
-        const t = Math.min(velocityY / 400, 1);
-        const compressY = 1 + (GAME_CONFIG.ANIMATION.JUMP.MAX_STRETCH - 1) * (1 - t);
-        this.targetScaleY = compressY;
-        this.targetScaleX = 1 / compressY;
+    if (this.shootKey.isDown || this.shootKeyAlt.isDown) {
+      const now = this.scene.time.now;
+      if (now - this.lastShootTime >= GAME_CONFIG.WEAPON.FIRE_RATE) {
+        this.lastShootTime = now;
+        this.events.emit('shoot', {
+          x: this.x,
+          y: this.y,
+          direction: this.flipX ? -1 : 1,
+          team: this.team
+        });
       }
-      
-      // Apply smooth scaling
-      const dt = this.scene.game.loop.delta / 1000;
-      this.setScale(
-        this.scaleX + (this.targetScaleX - this.scaleX) * GAME_CONFIG.ANIMATION.JUMP.STRETCH_SPEED * dt,
-        this.scaleY + (this.targetScaleY - this.scaleY) * GAME_CONFIG.ANIMATION.JUMP.STRETCH_SPEED * dt
-      );
-    } else if (!this.landingSquashTween) {
-      // Return to normal when grounded
-      this.targetScaleX = 1;
-      this.targetScaleY = 1;
-      
-      const dt = this.scene.game.loop.delta / 1000;
-      this.setScale(
-        this.scaleX + (this.targetScaleX - this.scaleX) * GAME_CONFIG.ANIMATION.JUMP.STRETCH_SPEED * dt,
-        this.scaleY + (this.targetScaleY - this.scaleY) * GAME_CONFIG.ANIMATION.JUMP.STRETCH_SPEED * dt
-      );
     }
   }
   
   /**
-   * Get current dash cooldown remaining
+   * Set position (used for respawning)
    */
-  public getDashCooldown(): number {
-    return Math.max(0, this.movementState.dashCooldown);
+  public setPosition(x?: number, y?: number, z?: number, w?: number): this {
+    super.setPosition(x, y, z, w);
+    
+    // Reset movement state when respawning
+    this.movementState = MovementSystem.createMovementState();
+    this.dashState = MovementSystem.createDashState();
+    this._isDashing = false;
+    this.wasDashing = false;
+    this.dashBuffering = false;
+    this.wasGrounded = true;
+    this.wasJumpPressed = false;
+    this.lastShootTime = 0;
+    
+    // Clear any animations (only if controller exists - may be called during construction)
+    if (this.animationController) {
+      this.animationController.clearDashTrails();
+    }
+    
+    return this;
   }
   
   /**
-   * Check if player can currently dash
+   * Get current movement state (for debugging)
    */
-  public getCanDash(): boolean {
-    return this.movementState.canDash && this.movementState.dashCooldown <= 0 && !this._isDashing;
+  public getMovementState(): MovementState {
+    return this.movementState;
+  }
+  
+  /**
+   * Override isDashing to use MovementState
+   */
+  public get isDashing(): boolean {
+    return this.movementState.isDashing;
+  }
+  
+  /**
+   * Clean up resources
+   */
+  public destroy(fromScene?: boolean): void {
+    this.events.removeAllListeners();
+    super.destroy(fromScene);
   }
 } 

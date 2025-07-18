@@ -8,9 +8,9 @@ import { MovementInput } from '../systems/MovementSystem';
  * AI behavior types
  */
 export enum AIBehavior {
-  AGGRESSIVE = 'aggressive', // Always chase and attack
-  DEFENSIVE = 'defensive',   // Keep distance and shoot
-  PATROL = 'patrol'         // Patrol area until player spotted
+  AGGRESSIVE = 'aggressive',  // Actively hunts players
+  DEFENSIVE = 'defensive',    // Guards area, attacks when approached
+  PATROL = 'patrol'          // Patrols between points
 }
 
 /**
@@ -60,7 +60,7 @@ export class AIPlayer extends BasePlayer {
   }
   
   /**
-   * Set the target for AI to track (usually the player)
+   * Set AI target (for aggressive/defensive behaviors)
    */
   public setTarget(target: Phaser.GameObjects.Sprite): void {
     this.target = target;
@@ -90,46 +90,25 @@ export class AIPlayer extends BasePlayer {
       this.setFlipX(state.facingDirection < 0);
     }
     
-    // Update animations
-    this.updateAnimationsFromState(body.velocity);
-  }
-  
-  /**
-   * Calculate AI input based on behavior and game state
-   */
-  private calculateAIInput(time: number): MovementInput {
-    // If no target, just patrol
-    if (!this.target || !this.target.active) {
-      return this.getPatrolInput(time);
-    }
-    
-    const distance = Phaser.Math.Distance.Between(
-      this.x, this.y,
-      this.target.x, this.target.y
+    // Update animations through AnimationController
+    this.animationController.update(
+      body.velocity.x,
+      body.velocity.y,
+      state.isGrounded,
+      this._isDashing,
+      delta
     );
     
-    // Check if target is in sight range
-    if (distance > this.SIGHT_RANGE) {
-      return this.getPatrolInput(time);
-    }
-    
-    // Apply behavior-specific logic
-    switch (this.behavior) {
-      case AIBehavior.AGGRESSIVE:
-        return this.getAggressiveInput(distance);
-      case AIBehavior.DEFENSIVE:
-        return this.getDefensiveInput(distance);
-      case AIBehavior.PATROL:
-      default:
-        // If target spotted while patrolling, become aggressive
-        return this.getAggressiveInput(distance);
+    // Create dash trails while dashing
+    if (this._isDashing && Math.random() < 0.8) {
+      this.createDashTrail();
     }
   }
   
   /**
-   * Patrol behavior - walk back and forth
+   * Calculate AI input based on behavior
    */
-  private getPatrolInput(time: number): MovementInput {
+  private calculateAIInput(time: number): MovementInput {
     const input: MovementInput = {
       left: false,
       right: false,
@@ -139,6 +118,110 @@ export class AIPlayer extends BasePlayer {
       dash: false
     };
     
+    switch (this.behavior) {
+      case AIBehavior.AGGRESSIVE:
+        this.calculateAggressiveInput(input);
+        break;
+      case AIBehavior.DEFENSIVE:
+        this.calculateDefensiveInput(input);
+        break;
+      case AIBehavior.PATROL:
+        this.calculatePatrolInput(input, time);
+        break;
+    }
+    
+    return input;
+  }
+  
+  /**
+   * Aggressive AI - actively hunts the target
+   */
+  private calculateAggressiveInput(input: MovementInput): void {
+    if (!this.target || !this.target.active) return;
+    
+    const dx = this.target.x - this.x;
+    const dy = this.target.y - this.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    // Only pursue if within sight range
+    if (distance > this.SIGHT_RANGE) return;
+    
+    // Move towards target
+    if (Math.abs(dx) > 20) {
+      if (dx > 0) {
+        input.right = true;
+      } else {
+        input.left = true;
+      }
+    }
+    
+    // Jump if target is above and close enough
+    if (dy < -50 && Math.abs(dx) < 100) {
+      input.jump = true;
+    }
+    
+    // Dash towards target if medium distance
+    if (distance > 150 && distance < 300 && Math.random() < 0.02) {
+      input.dash = true;
+    }
+    
+    // Attack if in range
+    if (distance < this.ATTACK_RANGE && this.attackCooldown <= 0) {
+      this.performAttack();
+    }
+  }
+  
+  /**
+   * Defensive AI - guards position, attacks when approached
+   */
+  private calculateDefensiveInput(input: MovementInput): void {
+    if (!this.target || !this.target.active) return;
+    
+    const dx = this.target.x - this.x;
+    const dy = this.target.y - this.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    
+    // Only react if target is close
+    if (distance > this.ATTACK_RANGE) return;
+    
+    // Face the target
+    if (Math.abs(dx) > 10) {
+      if (dx > 0) {
+        input.right = true;
+      } else {
+        input.left = true;
+      }
+      
+      // Move back and forth slightly
+      if (Math.sin(Date.now() * 0.001) > 0) {
+        input.left = !input.left;
+        input.right = !input.right;
+      }
+    }
+    
+    // Jump defensively
+    if (Math.random() < 0.01) {
+      input.jump = true;
+    }
+    
+    // Dash away if too close
+    if (distance < 100 && Math.random() < 0.05) {
+      input.dash = true;
+      // Dash away from target
+      input.left = dx > 0;
+      input.right = dx < 0;
+    }
+    
+    // Attack if in range
+    if (distance < this.ATTACK_RANGE && this.attackCooldown <= 0) {
+      this.performAttack();
+    }
+  }
+  
+  /**
+   * Patrol AI - moves back and forth
+   */
+  private calculatePatrolInput(input: MovementInput, time: number): void {
     // Change direction periodically
     if (time - this.lastDirectionChange > this.DIRECTION_CHANGE_TIME) {
       this.patrolDirection *= -1;
@@ -152,161 +235,81 @@ export class AIPlayer extends BasePlayer {
       input.left = true;
     }
     
-    // Occasionally jump
-    if (Math.random() < 0.01) {
+    // Random jump
+    if (Math.random() < 0.005) {
       input.jump = true;
     }
     
-    return input;
-  }
-  
-  /**
-   * Aggressive behavior - chase and attack
-   */
-  private getAggressiveInput(distance: number): MovementInput {
-    const input: MovementInput = {
-      left: false,
-      right: false,
-      up: false,
-      down: false,
-      jump: false,
-      dash: false
-    };
-    
-    if (!this.target) return input;
-    
-    const dx = this.target.x - this.x;
-    const dy = this.target.y - this.y;
-    
-    // Horizontal movement
-    if (Math.abs(dx) > 20) {
-      if (dx < 0) {
-        input.left = true;
-      } else {
-        input.right = true;
-      }
-    }
-    
-    // Jump if target is above
-    if (dy < -50 && this.movementController.getState().isGrounded) {
-      input.jump = true;
-    }
-    
-    // Dash towards target if far away and can dash
-    if (distance > 200 && distance < 400 && this.movementController.canDash()) {
+    // Random dash
+    if (Math.random() < 0.002) {
       input.dash = true;
     }
     
-    // Attack if in range
-    if (distance < this.ATTACK_RANGE && this.attackCooldown <= 0) {
-      this.performAttack();
-    }
-    
-    return input;
-  }
-  
-  /**
-   * Defensive behavior - keep distance and shoot
-   */
-  private getDefensiveInput(distance: number): MovementInput {
-    const input: MovementInput = {
-      left: false,
-      right: false,
-      up: false,
-      down: false,
-      jump: false,
-      dash: false
-    };
-    
-    if (!this.target) return input;
-    
-    const dx = this.target.x - this.x;
-    const optimalDistance = 250;
-    
-    // Try to maintain optimal distance
-    if (distance < optimalDistance - 50) {
-      // Too close, back away
-      if (dx < 0) {
-        input.right = true;
-      } else {
-        input.left = true;
-      }
+    // Check for nearby enemies
+    if (this.target && this.target.active) {
+      const dx = this.target.x - this.x;
+      const distance = Math.abs(dx);
       
-      // Dash away if too close
-      if (distance < 100 && this.movementController.canDash()) {
-        input.dash = true;
-      }
-    } else if (distance > optimalDistance + 50) {
-      // Too far, move closer
-      if (dx < 0) {
-        input.left = true;
-      } else {
-        input.right = true;
+      if (distance < this.SIGHT_RANGE) {
+        // Switch to aggressive temporarily
+        this.calculateAggressiveInput(input);
       }
     }
-    
-    // Jump occasionally to be evasive
-    if (Math.random() < 0.02 && this.movementController.getState().isGrounded) {
-      input.jump = true;
-    }
-    
-    // Attack from distance
-    if (distance < this.ATTACK_RANGE && this.attackCooldown <= 0) {
-      this.performAttack();
-    }
-    
-    return input;
   }
   
   /**
    * Perform attack action
    */
   private performAttack(): void {
-    // This would emit a shoot event or call weapon system
-    // For now, just set cooldown
+    // Set cooldown
     this.attackCooldown = this.ATTACK_COOLDOWN;
     
-    // Could emit event: this.events.emit('shoot', {...});
+    // Emit attack event (could be connected to weapon system)
+    console.log(`AI ${this.id} attacks!`);
   }
   
   /**
    * Handle jump event
    */
   private handleJump(): void {
-    // Could add effects or sounds
+    // Could play jump sound or create particles
+    console.log(`AI ${this.id} jumps`);
   }
   
   /**
    * Handle landing event
    */
   private handleLanding(): void {
-    this.createLandingSquash();
+    // Could create landing particles
+    console.log(`AI ${this.id} lands`);
   }
   
   /**
-   * Update animations based on velocity
+   * Override landing animation event
    */
-  private updateAnimationsFromState(velocity: Phaser.Math.Vector2): void {
-    // Update character animations
-    this.updateCharacterAnimations(velocity.x);
-    
-    // Create dash trails while dashing
-    if (this._isDashing && Math.random() < 0.8) {
-      this.createDashTrail();
-    }
+  protected onLandingSquash(): void {
+    this.handleLanding();
   }
   
   /**
-   * Change AI behavior
+   * Get current behavior
+   */
+  public getBehavior(): AIBehavior {
+    return this.behavior;
+  }
+  
+  /**
+   * Set behavior
    */
   public setBehavior(behavior: AIBehavior): void {
     this.behavior = behavior;
   }
   
   /**
-   * Get current dash cooldown
+   * Clean up resources
    */
-  public getDashCooldown(): number {
-    return this.movementController.getDashCooldown();
+  public destroy(fromScene?: boolean): void {
+    // Movement controller doesn't need explicit cleanup
+    super.destroy(fromScene);
   }
 } 

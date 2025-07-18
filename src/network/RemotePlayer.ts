@@ -58,13 +58,18 @@ export class RemotePlayer extends BasePlayer {
   }
   
   private createGun(): void {
-    this.gun = this.scene.add.rectangle(0, 0, 24, 3, 0x666666);
+    const gunLength = 20;
+    const gunWidth = 6;
+    this.gun = this.scene.add.rectangle(
+      this.x + 8,
+      this.y - 24,
+      gunLength,
+      gunWidth,
+      0x555555
+    );
     this.gun.setOrigin(0, 0.5);
   }
   
-  /**
-   * Update remote player state from server
-   */
   public updateFromServer(
     x: number, 
     y: number, 
@@ -75,13 +80,13 @@ export class RemotePlayer extends BasePlayer {
     isDashing: boolean, 
     isDead: boolean
   ): void {
-    // Update target position
+    // Update target position and velocity
     this.targetX = x;
     this.targetY = y;
     this.targetVelocityX = velocityX;
     this.targetVelocityY = velocityY;
     
-    // Smooth velocity for animations
+    // Smooth velocity for better animations
     this.smoothVelocityX = Phaser.Math.Linear(
       this.smoothVelocityX, 
       velocityX, 
@@ -93,39 +98,30 @@ export class RemotePlayer extends BasePlayer {
       this.velocitySmoothFactor
     );
     
-    // Predict ground state
-    this.updateGroundPrediction();
+    // Update ground prediction
+    this.updateGroundPrediction(y, velocityY);
     
-    // Predict jump and landing
-    this.predictMovementStates();
+    // Update jump/land prediction
+    this.updateJumpLandPrediction(velocityY);
     
-    // Calculate distance to target
-    const dx = this.targetX - this.x;
-    const dy = this.targetY - this.y;
-    const distance = Math.sqrt(dx * dx + dy * dy);
+    // Calculate interpolation factor based on distance
+    const distance = Phaser.Math.Distance.Between(this.x, this.y, this.targetX, this.targetY);
+    const adaptiveFactor = distance > 100 ? 
+      GAME_CONFIG.NETWORK.INTERPOLATION.LARGE_DISTANCE : 
+      this.interpolationFactor;
     
-    // Adjust interpolation based on state and distance
-    let lerpFactor = this.interpolationFactor;
+    // Interpolate position
+    const lerpFactor = 1 - Math.pow(1 - adaptiveFactor, this.scene.game.loop.delta / 16.67);
     
-    if (isDashing) {
-      lerpFactor = GAME_CONFIG.NETWORK.INTERPOLATION.DASH;
-    } else if (distance > 100) {
-      lerpFactor = GAME_CONFIG.NETWORK.INTERPOLATION.LARGE_DISTANCE;
-    } else if (distance > 50) {
-      lerpFactor = GAME_CONFIG.NETWORK.INTERPOLATION.MEDIUM_DISTANCE;
-    } else if (this.predictedJumping || this.predictedLanding) {
-      lerpFactor = GAME_CONFIG.NETWORK.INTERPOLATION.TRANSITION;
+    // Use direct position for large corrections
+    if (distance > 200) {
+      this.x = this.targetX;
+      this.y = this.targetY;
+    } else {
+      this.x = Phaser.Math.Linear(this.x, this.targetX, lerpFactor);
+      const predictedY = this.predictGroundedY(this.targetY);
+      this.y = Phaser.Math.Linear(this.y, predictedY, lerpFactor);
     }
-    
-    // Smooth interpolation with velocity prediction
-    const predictionTime = isDashing ? 
-      GAME_CONFIG.NETWORK.PREDICTION.TIME_DASH : 
-      GAME_CONFIG.NETWORK.PREDICTION.TIME_DEFAULT;
-    const predictedX = this.targetX + (this.targetVelocityX * predictionTime);
-    const predictedY = this.targetY + (this.targetVelocityY * predictionTime);
-    
-    this.x = Phaser.Math.Linear(this.x, predictedX, lerpFactor);
-    this.y = Phaser.Math.Linear(this.y, predictedY, lerpFactor);
     
     // Set velocity for physics interactions
     this.setVelocity(
@@ -164,126 +160,92 @@ export class RemotePlayer extends BasePlayer {
       this.createDashTrail();
     }
     
-    // Update animations with smoothed velocity for better visuals
-    this.updateCharacterAnimations(this.smoothVelocityX);
+    // Update animations through AnimationController
+    this.animationController.update(
+      this.smoothVelocityX,
+      this.smoothVelocityY,
+      this.predictedGrounded,
+      this._isDashing,
+      this.scene.game.loop.delta
+    );
     
     // Apply predictive animations
-    this.applyPredictiveAnimations();
+    this.animationController.applyPredictiveAnimations(
+      this.predictedJumping,
+      this.predictedLanding,
+      this.smoothVelocityX,
+      this._isDashing
+    );
     
     // Update UI positions
     this.updateUIPositions();
   }
   
   /**
-   * Update ground state prediction based on velocity and position
+   * Update ground prediction based on Y position and velocity
    */
-  private updateGroundPrediction(): void {
-    const wasGrounded = this.predictedGrounded;
-    
-    // Simple ground detection based on velocity and position stability
-    const verticalSpeed = Math.abs(this.smoothVelocityY);
-    const isNearGround = Math.abs(this.y - this.lastGroundedY) < 10;
-    
-    if (verticalSpeed < 50 && isNearGround) {
-      this.predictedGrounded = true;
-      this.lastGroundedY = this.y;
-      this.airTime = 0;
+  private updateGroundPrediction(y: number, velocityY: number): void {
+    // Track when player is likely on ground (50 units/s threshold)
+    if (Math.abs(velocityY) < 50) {
+      if (Math.abs(y - this.lastGroundedY) < 5) {
+        // Stable Y position, likely grounded
+        this.predictedGrounded = true;
+        this.airTime = 0;
+      } else {
+        // Y changed but low velocity, update ground reference
+        this.lastGroundedY = y;
+        this.predictedGrounded = true;
+        this.airTime = 0;
+      }
     } else {
-      this.predictedGrounded = false;
+      // Moving vertically, likely in air
       this.airTime += this.scene.game.loop.delta;
+      if (this.airTime > 100) {
+        this.predictedGrounded = false;
+      }
     }
-    
-    // Update BasePlayer's ground state for animations
-    this.isGrounded = this.predictedGrounded;
-    this.wasGrounded = wasGrounded;
   }
   
   /**
-   * Predict jump and landing states based on velocity
+   * Update jump and landing predictions
    */
-  private predictMovementStates(): void {
-    // Reset predictions
-    this.predictedJumping = false;
-    this.predictedLanding = false;
-    
-    // Predict jump start
-    if (this.predictedGrounded && this.smoothVelocityY < this.jumpPredictionThreshold) {
+  private updateJumpLandPrediction(velocityY: number): void {
+    // Predict jumping (strong upward velocity)
+    if (velocityY < -this.jumpPredictionThreshold && !this.predictedJumping) {
       this.predictedJumping = true;
+      this.predictedLanding = false;
     }
     
-    // Predict landing
-    if (!this.predictedGrounded && this.smoothVelocityY > 100) {
-      // Estimate time to ground based on velocity
-      const timeToGround = (this.lastGroundedY - this.y) / this.smoothVelocityY;
+    // Predict landing (was in air, now low velocity)
+    if (this.predictedJumping && Math.abs(velocityY) < 50) {
+      this.predictedJumping = false;
+      this.predictedLanding = true;
       
-      if (timeToGround > 0 && timeToGround < this.landingPredictionWindow) {
-        this.predictedLanding = true;
-      }
+      // Clear landing prediction after a short time
+      this.scene.time.delayedCall(this.landingPredictionWindow, () => {
+        this.predictedLanding = false;
+      });
     }
   }
   
   /**
-   * Apply predictive animations based on predicted states
+   * Predict grounded Y position for smoother movement
    */
-  private applyPredictiveAnimations(): void {
-    // Jump anticipation
-    if (this.predictedJumping && !this._isDashing) {
-      // Start stretch animation early
-      const stretchScale = 1.1;
-      this.setScale(1 / stretchScale, stretchScale);
+  private predictGroundedY(targetY: number): number {
+    if (this.predictedGrounded && Math.abs(this.smoothVelocityY) < 50) {
+      // Snap to last known ground position for stability
+      return Phaser.Math.Linear(targetY, this.lastGroundedY, 0.5);
     }
-    
-    // Landing preparation
-    if (this.predictedLanding && !this._isDashing) {
-      // Start compression animation early
-      const compressScale = 0.95;
-      this.setScale(1 / compressScale, compressScale);
-    }
-    
-    // Enhanced idle breathing for remote players
-    if (this.predictedGrounded && Math.abs(this.smoothVelocityX) < 10 && !this._isDashing) {
-      // Stronger breathing animation for remote players
-      if (!this.breathingTween) {
-        this.startBreathingAnimation();
-      }
-    }
-    
-    // Movement anticipation
-    if (Math.abs(this.smoothVelocityX) > 50) {
-      // Lean into movement direction
-      const leanAngle = Phaser.Math.Clamp(
-        this.smoothVelocityX * GAME_CONFIG.ANIMATION.LEAN_MULTIPLIER * 1.2, 
-        -GAME_CONFIG.ANIMATION.LEAN_MAX_ANGLE * 1.2, 
-        GAME_CONFIG.ANIMATION.LEAN_MAX_ANGLE * 1.2
-      );
-      this.setRotation(Phaser.Math.DegToRad(leanAngle));
-    }
+    return targetY;
   }
   
   /**
-   * Get target X position for debug visualization
+   * Clean up resources
    */
-  public getTargetX(): number {
-    return this.targetX;
-  }
-  
-  /**
-   * Get target Y position for debug visualization
-   */
-  public getTargetY(): number {
-    return this.targetY;
-  }
-  
-  /**
-   * Clean up remote player
-   */
-  public destroy(): void {
-    // Destroy gun
+  public destroy(fromScene?: boolean): void {
     if (this.gun) {
       this.gun.destroy();
     }
-    
-    // Call parent destroy
-    super.destroy();
+    super.destroy(fromScene);
   }
 } 

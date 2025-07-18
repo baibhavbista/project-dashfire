@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
-import { COLORS, getTeamColors } from '../config/Colors';
+import { getTeamColors } from '../config/Colors';
 import { GAME_CONFIG, Team } from '../config/GameConfig';
+import { AnimationController } from '../systems/AnimationController';
 
 /**
  * Base player class containing shared functionality for both local and remote players
@@ -19,20 +20,16 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
   protected healthBarBg?: Phaser.GameObjects.Rectangle;
   protected healthBar?: Phaser.GameObjects.Rectangle;
   
-  // Dash system
-  protected dashTrails: Phaser.GameObjects.Sprite[] = [];
-  protected readonly MAX_TRAILS: number = GAME_CONFIG.PLAYER.DASH.MAX_TRAILS;
+  // Animation controller
+  protected animationController: AnimationController;
+  
+  // Dash state
   protected _isDashing: boolean = false;
   protected wasDashing: boolean = false;
   
-  // Animation state
-  protected lastVelocityX: number = 0;
-  protected breathingTween?: Phaser.Tweens.Tween;
-  protected targetScaleX: number = 1;
-  protected targetScaleY: number = 1;
+  // Movement state
   protected isGrounded: boolean = false;
   protected wasGrounded: boolean = false;
-  protected landingSquashTween?: Phaser.Tweens.Tween;
   
   // Health
   protected currentHealth: number = GAME_CONFIG.PLAYER.HEALTH.MAX;
@@ -71,6 +68,9 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
     scene.add.existing(this);
     scene.physics.add.existing(this);
     
+    // Ensure sprite is visible
+    this.setVisible(true);
+    
     // Configure sprite
     this.setOrigin(0.5, 1); // Bottom-center origin for proper animations
     this.setBounce(GAME_CONFIG.PLAYER.BOUNCE);
@@ -86,307 +86,211 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
       this.createHealthBar(); // Remote players show health bars above them
     }
     
-    // Start breathing animation when idle
-    this.startBreathingAnimation();
+    // Initialize animation controller
+    this.animationController = new AnimationController(
+      scene,
+      this,
+      this.directionIndicator,
+      {
+        onLandingSquash: () => this.onLandingSquash(),
+        onDashTrailCreated: () => this.onDashTrailCreated()
+      }
+    );
   }
   
+  /**
+   * Create direction indicator triangle above player
+   */
   protected createDirectionIndicator(): void {
     const teamColors = getTeamColors(this.team);
     this.directionIndicator = this.scene.add.triangle(
       this.x, 
       this.y - GAME_CONFIG.ANIMATION.INDICATOR.OFFSET_Y,
-      0, 5,    // bottom left
-      5, 0,    // top
-      10, 5,   // bottom right
-      teamColors.PRIMARY,
-      GAME_CONFIG.ANIMATION.INDICATOR.ACTIVE_ALPHA
+      0, 10,  // top point
+      -8, -8, // bottom left
+      8, -8,  // bottom right
+      teamColors.PRIMARY
     );
-    this.directionIndicator.setOrigin(0.5);
+    this.directionIndicator.setAlpha(GAME_CONFIG.ANIMATION.INDICATOR.FADE_ALPHA);
   }
   
+  /**
+   * Create name text above player (for remote players)
+   */
   protected createNameText(): void {
-    if (this.isLocalPlayer) return; // Don't show name for local player
-    
-    this.nameText = this.scene.add.text(
-      this.x, 
-      this.y - 75,
-      this.playerName,
-      {
-        fontSize: GAME_CONFIG.UI.FONT.SIZE.SMALL,
-        color: COLORS.UI.TEXT_PRIMARY,
-        fontFamily: GAME_CONFIG.UI.FONT.FAMILY
-      }
-    );
-    this.nameText.setOrigin(0.5);
+    if (!this.isLocalPlayer) {
+      this.nameText = this.scene.add.text(
+        this.x, 
+        this.y - 80, 
+        this.playerName,
+        {
+          fontSize: '14px',
+          color: '#ffffff',
+          stroke: '#000000',
+          strokeThickness: 2
+        }
+      );
+      this.nameText.setOrigin(0.5, 0.5);
+    }
   }
   
+  /**
+   * Create health bar for remote players
+   */
   protected createHealthBar(): void {
     const barWidth = 40;
     const barHeight = 4;
-    const yOffset = -59;
     
-    // Background
     this.healthBarBg = this.scene.add.rectangle(
-      this.x,
-      this.y + yOffset,
-      barWidth,
-      barHeight,
-      COLORS.UI.HEALTH_BG,
-      0.8
+      this.x, 
+      this.y - 65,
+      barWidth, 
+      barHeight, 
+      0x333333
     );
     
-    // Health bar
     this.healthBar = this.scene.add.rectangle(
-      this.x,
-      this.y + yOffset,
-      barWidth,
-      barHeight,
-      COLORS.UI.HEALTH_GOOD
+      this.x, 
+      this.y - 65,
+      barWidth, 
+      barHeight, 
+      0x2ECC71
     );
+    
+    this.healthBarBg.setOrigin(0.5, 0.5);
     this.healthBar.setOrigin(0, 0.5);
     this.healthBar.x -= barWidth / 2;
   }
   
   /**
-   * Start breathing animation when idle
+   * Update UI element positions
    */
-  protected startBreathingAnimation(): void {
-    if (this.breathingTween) return;
-    
-    this.breathingTween = this.scene.tweens.add({
-      targets: this,
-      scaleX: { 
-        from: GAME_CONFIG.ANIMATION.BREATHING.MIN_SCALE, 
-        to: GAME_CONFIG.ANIMATION.BREATHING.MAX_SCALE 
-      },
-      scaleY: { 
-        from: GAME_CONFIG.ANIMATION.BREATHING.MAX_SCALE, 
-        to: GAME_CONFIG.ANIMATION.BREATHING.MIN_SCALE 
-      },
-      duration: GAME_CONFIG.ANIMATION.BREATHING.CYCLE_TIME,
-      ease: 'Sine.easeInOut',
-      yoyo: true,
-      repeat: -1
-    });
-  }
-  
-  /**
-   * Stop breathing animation when moving
-   */
-  protected stopBreathingAnimation(): void {
-    if (this.breathingTween) {
-      this.breathingTween.stop();
-      this.breathingTween = undefined;
-      this.setScale(1, 1);
-    }
-  }
-  
-  /**
-   * Create a dash trail effect
-   */
-  protected createDashTrail(): void {
-    // Remove oldest trail if at max
-    if (this.dashTrails.length >= this.MAX_TRAILS) {
-      const oldTrail = this.dashTrails.shift();
-      if (oldTrail) {
-        oldTrail.destroy();
-      }
-    }
-
-    // Create new trail using the same texture as the player
-    const trail = this.scene.add.sprite(this.x, this.y, this.texture.key);
-    trail.setDisplaySize(GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
-    trail.setAlpha(0.6);
-    trail.setFlipX(this.flipX);
-    trail.setOrigin(0.5, 1);
-
-    this.dashTrails.push(trail);
-
-    // Fade out trail
-    this.scene.tweens.add({
-      targets: trail,
-      alpha: 0,
-      duration: GAME_CONFIG.PLAYER.DASH.TRAIL_FADE_DURATION,
-      onComplete: () => {
-        const index = this.dashTrails.indexOf(trail);
-        if (index > -1) {
-          this.dashTrails.splice(index, 1);
-        }
-        trail.destroy();
-      }
-    });
-  }
-  
-  /**
-   * Clean up all dash trails
-   */
-  protected clearDashTrails(): void {
-    this.dashTrails.forEach(trail => {
-      if (trail && trail.active) {
-        trail.destroy();
-      }
-    });
-    this.dashTrails = [];
-  }
-  
-  /**
-   * Update character animations based on movement state
-   */
-  protected updateCharacterAnimations(velocityX: number): void {
-    const absVelX = Math.abs(velocityX);
-    
-    // Update direction indicator
-    if (this.directionIndicator) {
-      this.directionIndicator.setPosition(this.x, this.y - GAME_CONFIG.ANIMATION.INDICATOR.OFFSET_Y);
-      
-      if (absVelX > 10) {
-        this.directionIndicator.setAlpha(GAME_CONFIG.ANIMATION.INDICATOR.ACTIVE_ALPHA);
-        const angle = velocityX > 0 ? 90 : -90;
-        this.directionIndicator.setRotation(Phaser.Math.DegToRad(angle));
-        this.lastVelocityX = velocityX;
-      } else {
-        this.directionIndicator.setAlpha(GAME_CONFIG.ANIMATION.INDICATOR.FADE_ALPHA);
-        const angle = this.lastVelocityX > 0 ? 90 : -90;
-        this.directionIndicator.setRotation(Phaser.Math.DegToRad(angle));
-      }
-      
-      // Glow during dash
-      if (this._isDashing) {
-        this.directionIndicator.setAlpha(1);
-        this.directionIndicator.setScale(GAME_CONFIG.ANIMATION.INDICATOR.DASH_SCALE);
-      } else {
-        this.directionIndicator.setScale(1);
-      }
+  protected updateUIPositions(): void {
+    if (this.nameText) {
+      this.nameText.setPosition(this.x, this.y - 80);
     }
     
-    // Movement lean
-    if (absVelX > 10 && !this._isDashing) {
-      const leanAngle = Phaser.Math.Clamp(
-        velocityX * GAME_CONFIG.ANIMATION.LEAN_MULTIPLIER, 
-        -GAME_CONFIG.ANIMATION.LEAN_MAX_ANGLE, 
-        GAME_CONFIG.ANIMATION.LEAN_MAX_ANGLE
-      );
-      this.setRotation(Phaser.Math.DegToRad(leanAngle));
-    } else if (this.isGrounded && !this._isDashing) {
-      this.setRotation(0);
-    }
-    
-    // Breathing animation when idle
-    if (absVelX < 10 && this.isGrounded && !this._isDashing) {
-      this.startBreathingAnimation();
-    } else {
-      this.stopBreathingAnimation();
+    if (this.healthBarBg && this.healthBar) {
+      this.healthBarBg.setPosition(this.x, this.y - 65);
+      this.healthBar.setPosition(this.x - 20, this.y - 65);
     }
   }
   
   /**
-   * Update health display
+   * Update health and health bar
    */
   public updateHealth(health: number): void {
     this.currentHealth = health;
     
-    if (this.healthBar && this.healthBarBg) {
-      const healthPercent = Math.max(0, health / GAME_CONFIG.PLAYER.HEALTH.MAX);
-      this.healthBar.setDisplaySize(40 * healthPercent, 4);
+    if (this.healthBar) {
+      const healthPercent = health / GAME_CONFIG.PLAYER.HEALTH.MAX;
+      this.healthBar.setScale(healthPercent, 1);
       
-      // Update color based on health
+      // Change color based on health
       if (healthPercent > 0.6) {
-        this.healthBar.setFillStyle(COLORS.UI.HEALTH_GOOD);
+        this.healthBar.setFillStyle(0x2ECC71); // Green
       } else if (healthPercent > 0.3) {
-        this.healthBar.setFillStyle(COLORS.UI.HEALTH_WARNING);
+        this.healthBar.setFillStyle(0xF39C12); // Orange
       } else {
-        this.healthBar.setFillStyle(COLORS.UI.HEALTH_CRITICAL);
+        this.healthBar.setFillStyle(0xE74C3C); // Red
       }
     }
   }
   
   /**
-   * Update position of UI elements
+   * Set player death state
    */
-  protected updateUIPositions(): void {
+  public setDead(dead: boolean): void {
+    this.isDead = dead;
+    this.setVisible(!dead);
+    
+    if (this.directionIndicator) {
+      this.directionIndicator.setVisible(!dead);
+    }
+    
     if (this.nameText) {
-      this.nameText.setPosition(this.x, this.y - 75);
+      this.nameText.setVisible(!dead);
     }
     
     if (this.healthBarBg && this.healthBar) {
-      const yOffset = -59;
-      this.healthBarBg.setPosition(this.x, this.y + yOffset);
-      this.healthBar.setPosition(this.x - 20, this.y + yOffset);
+      this.healthBarBg.setVisible(!dead);
+      this.healthBar.setVisible(!dead);
     }
   }
   
   /**
-   * Set death state
+   * Create dash trail effect
    */
-  public setDead(isDead: boolean): void {
-    this.isDead = isDead;
-    
-    if (isDead) {
-      this.setAlpha(0.3);
-      if (this.directionIndicator) this.directionIndicator.setVisible(false);
-      if (this.nameText) this.nameText.setVisible(false);
-      if (this.healthBar) this.healthBar.setVisible(false);
-      if (this.healthBarBg) this.healthBarBg.setVisible(false);
-    } else {
-      this.setAlpha(1);
-      if (this.directionIndicator) this.directionIndicator.setVisible(true);
-      if (this.nameText) this.nameText.setVisible(true);
-      if (this.healthBar) this.healthBar.setVisible(true);
-      if (this.healthBarBg) this.healthBarBg.setVisible(true);
-    }
+  protected createDashTrail(): void {
+    this.animationController.createDashTrail();
   }
   
   /**
-   * Create landing squash effect
+   * Clear all dash trails
    */
-  protected createLandingSquash(): void {
-    if (this.landingSquashTween) {
-      this.landingSquashTween.stop();
-    }
-    
-    // Immediate squash
-    this.setScale(1.3, 0.7);
-    
-    // Bounce back with overshoot
-    this.landingSquashTween = this.scene.tweens.add({
-      targets: this,
-      scaleX: 1,
-      scaleY: 1,
-      duration: GAME_CONFIG.ANIMATION.JUMP.LANDING_DURATION,
-      ease: 'Back.easeOut',
-      onComplete: () => {
-        this.landingSquashTween = undefined;
-      }
-    });
+  protected clearDashTrails(): void {
+    this.animationController.clearDashTrails();
   }
   
   /**
-   * Get current dash state
+   * Handle landing animation event
+   */
+  protected onLandingSquash(): void {
+    // Override in subclasses if needed
+  }
+  
+  /**
+   * Handle dash trail creation event
+   */
+  protected onDashTrailCreated(): void {
+    // Override in subclasses if needed
+  }
+  
+  /**
+   * Getter for isDashing
    */
   public get isDashing(): boolean {
     return this._isDashing;
   }
   
   /**
-   * Clean up all components
+   * Get current health
    */
-  public destroy(): void {
-    // Stop all animations
-    this.stopBreathingAnimation();
-    if (this.landingSquashTween) {
-      this.landingSquashTween.stop();
+  public getHealth(): number {
+    return this.currentHealth;
+  }
+  
+  /**
+   * Get team
+   */
+  public getTeam(): Team {
+    return this.team;
+  }
+  
+  /**
+   * Clean up resources
+   */
+  public destroy(fromScene?: boolean): void {
+    // Clean up animations
+    this.animationController.destroy();
+    
+    // Clean up UI elements
+    if (this.directionIndicator) {
+      this.directionIndicator.destroy();
     }
     
-    // Clean up dash trails
-    this.clearDashTrails();
+    if (this.nameText) {
+      this.nameText.destroy();
+    }
     
-    // Destroy UI elements
-    if (this.directionIndicator) this.directionIndicator.destroy();
-    if (this.nameText) this.nameText.destroy();
-    if (this.healthBar) this.healthBar.destroy();
-    if (this.healthBarBg) this.healthBarBg.destroy();
+    if (this.healthBarBg) {
+      this.healthBarBg.destroy();
+    }
     
-    // Call parent destroy
-    super.destroy();
+    if (this.healthBar) {
+      this.healthBar.destroy();
+    }
+    
+    super.destroy(fromScene);
   }
 } 
