@@ -10,6 +10,8 @@ import { KillFeed } from '../ui/KillFeed';
 import { EffectsSystem } from './EffectsSystem';
 import { SoundManager } from '../SoundManager';
 import { SHARED_CONFIG } from '../../shared/GameConstants';
+import { GameScene } from '../GameScene';
+import { Bullet } from '../BulletPool';
 
 /**
  * MultiplayerCoordinator - Manages all multiplayer functionality
@@ -23,21 +25,21 @@ import { SHARED_CONFIG } from '../../shared/GameConstants';
  * - Network quality visualization
  */
 export class MultiplayerCoordinator {
-  private scene: Phaser.Scene;
+  private scene: GameScene;
   private networkManager: NetworkManager;
   private player: LocalPlayer;
   private remotePlayers: Map<string, RemotePlayer>;
-  private localPlayerId?: string;
-  
-  // UI references
   private gameHUD: GameHUD;
   private killFeed: KillFeed;
   private effectsSystem: EffectsSystem;
   private soundManager: SoundManager;
   
+  // Track active bullets for cleanup
+  private activeBullets: Map<string, { sprite: Phaser.GameObjects.GameObject, tween?: Phaser.Tweens.Tween }> = new Map();
+  
   // Network quality visualization
-  private showNetworkQuality: boolean = false;
   private networkQualityIndicators: Map<string, Phaser.GameObjects.Graphics> = new Map();
+  private showNetworkQuality: boolean = false;
   
   // Client-side prediction
   private lastServerPosition: { x: number; y: number } = { x: 0, y: 0 };
@@ -45,6 +47,7 @@ export class MultiplayerCoordinator {
   private reconciliationSpeed: number = 0.3;
   
   // Game state
+  private localPlayerId?: string;
   private currentHealth: number = 100;
   private isDead: boolean = false;
   
@@ -63,7 +66,7 @@ export class MultiplayerCoordinator {
     effectsSystem: EffectsSystem,
     soundManager: SoundManager
   ) {
-    this.scene = scene;
+    this.scene = scene as GameScene;
     this.networkManager = networkManager;
     this.player = player;
     this.remotePlayers = remotePlayers;
@@ -109,7 +112,7 @@ export class MultiplayerCoordinator {
       this.networkManager?.emit("process-pending-players");
     });
     
-    // Player joined
+    // Player added to game
     this.networkManager.on("player-added", (player: PlayerData) => {
       // Skip if it's the local player or already exists
       if (player.id === this.localPlayerId || this.remotePlayers.has(player.id)) {
@@ -170,6 +173,7 @@ export class MultiplayerCoordinator {
     
     // Bullet fired by other player
     this.networkManager.on("bullet-added", (bullet: BulletData) => {
+      console.log("bullet-added", bullet);
       // Only render bullets from other players
       if (bullet.ownerId !== this.localPlayerId) {
         // Create visual bullet with team color
@@ -183,12 +187,64 @@ export class MultiplayerCoordinator {
         );
         
         // Animate bullet
-        this.scene.tweens.add({
+        const tween = this.scene.tweens.add({
           targets: bulletSprite,
           x: bullet.x + (bullet.velocityX * (SHARED_CONFIG.BULLET.LIFETIME_MS / 1000)), // Convert ms to seconds
           duration: SHARED_CONFIG.BULLET.LIFETIME_MS,
-          onComplete: () => bulletSprite.destroy()
+          onComplete: () => {
+            bulletSprite.destroy();
+            this.activeBullets.delete(bullet.id);
+          }
         });
+        
+        // Track the bullet
+        this.activeBullets.set(bullet.id, { sprite: bulletSprite, tween });
+      }
+    });
+    
+    // Bullet removed by server (collision or timeout)
+    this.networkManager.on("bullet-removed", (bullet: BulletData) => {
+      console.log("bullet-removed", bullet);
+      // Check if we're tracking this bullet
+      const trackedBullet = this.activeBullets.get(bullet.id);
+      if (trackedBullet) {
+        // Stop the tween if it exists
+        if (trackedBullet.tween) {
+          trackedBullet.tween.stop();
+        }
+        
+        // Create impact effect at current position
+        if (trackedBullet.sprite && 'x' in trackedBullet.sprite && 'y' in trackedBullet.sprite) {
+          this.effectsSystem.createBulletImpactEffect(
+            trackedBullet.sprite.x as number, 
+            trackedBullet.sprite.y as number
+          );
+        }
+        
+        // Destroy the sprite
+        trackedBullet.sprite.destroy();
+        
+        // Remove from tracking
+        this.activeBullets.delete(bullet.id);
+      }
+      
+      // If it's our own bullet, check if it's in the bullet pool
+      if (bullet.ownerId === this.localPlayerId) {
+        // Find and deactivate the bullet in our pool
+        const gameScene = this.scene as GameScene;
+        const bullets = gameScene.getWeaponSystem().getBulletPool().getBullets();
+        // We need to match by position since we don't track bullet IDs in the pool
+        const localBullet = bullets.find((b: Bullet) => 
+          b.isActive && 
+          Math.abs(b.x - bullet.x) < 50 // Within reasonable distance
+        );
+        
+        if (localBullet) {
+          // Create impact effect
+          this.effectsSystem.createBulletImpactEffect(localBullet.x, localBullet.y);
+          // Deactivate the bullet
+          gameScene.getWeaponSystem().getBulletPool().deactivateBullet(localBullet);
+        }
       }
     });
     
@@ -225,13 +281,13 @@ export class MultiplayerCoordinator {
       
       // Update health and check for damage
       if (serverData.health !== undefined) {
-        const previousHealth = this.currentHealth;
-        this.currentHealth = serverData.health;
-        this.gameHUD.updateHealth(this.currentHealth);
-        this.onHealthUpdate?.(this.currentHealth);
+        const previousHealth = this.player.getHealth();
+        this.player.updateHealth(serverData.health);
+        this.gameHUD.updateHealth(serverData.health);
+        this.onHealthUpdate?.(serverData.health);
         
         // Trigger hit effect if we took damage
-        if (previousHealth > this.currentHealth && this.currentHealth > 0) {
+        if (previousHealth > serverData.health && serverData.health > 0) {
           this.effectsSystem.createHitEffect(this.player.x, this.player.y);
           this.soundManager.playHit();
         }
@@ -239,10 +295,10 @@ export class MultiplayerCoordinator {
       
       // Update death state
       if (serverData.isDead !== undefined) {
-        const wasDead = this.isDead;
-        this.isDead = serverData.isDead;
+        const wasDead = !this.player.visible; // Using visibility as proxy for death state
+        this.player.setDead(serverData.isDead);
         
-        if (this.isDead && !wasDead) {
+        if (serverData.isDead && !wasDead) {
           // Player just died
           this.player.setAlpha(0.3);
           this.player.setVelocity(0, 0);
@@ -250,7 +306,7 @@ export class MultiplayerCoordinator {
           this.effectsSystem.createDeathEffect(this.player.x, this.player.y, team);
           this.soundManager.playDeath();
           this.onDeathStateChange?.(true);
-        } else if (!this.isDead && wasDead) {
+        } else if (!serverData.isDead && wasDead) {
           // Player respawned
           this.player.setAlpha(1);
           this.gameHUD.setRespawnTimer(0);
@@ -259,7 +315,7 @@ export class MultiplayerCoordinator {
       }
       
       // Update respawn timer
-      if (this.isDead && serverData.respawnTimer !== undefined) {
+      if (serverData.isDead && serverData.respawnTimer !== undefined) {
         const seconds = Math.ceil(serverData.respawnTimer / 1000);
         this.gameHUD.setRespawnTimer(seconds);
       }
@@ -272,7 +328,7 @@ export class MultiplayerCoordinator {
    * Initializes the coordinator and sets up initial state
    */
   initialize(): void {
-    // Get initial player ID if already assigned
+    // If we already have player ID, set it
     const playerId = this.networkManager.getPlayerId();
     if (playerId) {
       this.localPlayerId = playerId;
@@ -481,7 +537,7 @@ export class MultiplayerCoordinator {
   }
 
   /**
-   * Gets the current prediction error for debug display
+   * Get current network prediction error
    */
   getPredictionError(): { x: number; y: number } {
     return this.predictionError;

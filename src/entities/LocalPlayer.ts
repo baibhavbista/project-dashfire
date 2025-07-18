@@ -3,6 +3,7 @@ import { BasePlayer } from './BasePlayer';
 import { GAME_CONFIG, Team } from '../config/GameConfig';
 import { INPUT_CONFIG } from '../config/InputConfig';
 import { MovementSystem, MovementInput, MovementState } from '../systems/MovementSystem';
+import { PlayerBulletInterface } from './PlayerBulletInterface';
 
 /**
  * Local player class that handles input and uses MovementSystem
@@ -260,12 +261,14 @@ export class LocalPlayer extends BasePlayer {
       const now = this.scene.time.now;
       if (now - this.lastShootTime >= GAME_CONFIG.WEAPON.FIRE_RATE) {
         this.lastShootTime = now;
-        this.events.emit('shoot', {
-          x: this.x,
-          y: this.y,
-          direction: this.flipX ? -1 : 1,
-          team: this.team
-        });
+        const direction = this.flipX ? -1 : 1;
+        const bulletData = PlayerBulletInterface.getBulletSpawnData(
+          this.x,
+          this.y,
+          direction,
+          this.team as Team
+        );
+        this.events.emit('shoot', bulletData);
       }
     }
   }

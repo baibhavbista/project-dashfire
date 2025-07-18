@@ -33,6 +33,12 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
     this.onMessage("shoot", (client, data) => {
       const player = this.state.players.get(client.sessionId);
       if (player && !player.isDead && this.state.gameState === "playing") {
+        console.log(`[Server] Received shoot from ${client.sessionId}:`, {
+          receivedData: data,
+          playerPos: { x: player.x, y: player.y },
+          playerFlipX: player.flipX
+        });
+        
         // Validate basic bullet position data
         if (!data || isNaN(data.x) || isNaN(data.y)) {
           console.error(`Invalid shoot data from ${client.sessionId}:`, data);
@@ -53,6 +59,13 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
           client.sessionId,
           player.team
         );
+        
+        console.log(`[Server] Creating bullet:`, {
+          id: bulletId,
+          pos: { x: bullet.x, y: bullet.y },
+          velocityX: bullet.velocityX,
+          team: bullet.ownerTeam
+        });
         
         // Final validation before adding
         if (isNaN(bullet.x) || isNaN(bullet.y) || isNaN(bullet.velocityX)) {
@@ -185,19 +198,42 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
         return;
       }
       
-      // First check collision with players at current position
+      // Calculate bullet movement for this frame
+      const deltaSeconds = deltaTime / 1000;
+      const movement = bullet.velocityX * deltaSeconds;
+      const bulletPrevX = bullet.x; // Current position (before update)
+      const bulletNextX = bullet.x + movement; // Next position
+
+      console.log("bulletPrevX", bulletPrevX);
+      console.log("bulletNextX", bulletNextX);
+      
+      // Use continuous collision detection
       let bulletHit = false;
+      
       for (const player of this.state.players.values()) {
         if (player.id !== bullet.ownerId && 
             player.team !== bullet.ownerTeam && 
             !player.isDead) {
           
-          // Proper AABB collision check with buffer
-          const dx = Math.abs(player.x - bullet.x);
-          const dy = Math.abs(player.y - bullet.y);
+          // Get player bounding box
+          // Note: player.y is at bottom-center on client, so we adjust to get center
+          const playerCenterY = player.y - PLAYER_HALF_HEIGHT;
+          const playerLeft = player.x - PLAYER_HALF_WIDTH;
+          const playerRight = player.x + PLAYER_HALF_WIDTH;
+          const playerTop = playerCenterY - PLAYER_HALF_HEIGHT;
+          const playerBottom = playerCenterY + PLAYER_HALF_HEIGHT;
           
-          if (dx < (PLAYER_HALF_WIDTH + BULLET_HALF_WIDTH) &&
-              dy < (PLAYER_HALF_HEIGHT + BULLET_HALF_HEIGHT)) {
+          // Get bullet's swept bounding box (the area it covers during movement)
+          const bulletTop = bullet.y - BULLET_HALF_HEIGHT;
+          const bulletBottom = bullet.y + BULLET_HALF_HEIGHT;
+          const bulletLeft = Math.min(bulletPrevX, bulletNextX) - BULLET_HALF_WIDTH;
+          const bulletRight = Math.max(bulletPrevX, bulletNextX) + BULLET_HALF_WIDTH;
+          
+          // Check if swept bullet box intersects player box
+          if (bulletLeft < playerRight &&
+              bulletRight > playerLeft &&
+              bulletTop < playerBottom &&
+              bulletBottom > playerTop) {
             
             // Hit detected
             player.health -= SHARED_CONFIG.BULLET.DAMAGE;
@@ -236,9 +272,10 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
                 });
               }
             }
-            
+            console.log("update: Bullet hit a player", bullet.x, bullet.y, player.x, player.y);
             // Mark bullet for removal and stop checking other players
             bulletsToRemove.push(index);
+
             bulletHit = true;
             break;
           }
@@ -247,17 +284,8 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
       
       // If bullet didn't hit anyone, update its position
       if (!bulletHit) {
-        // Update bullet position
-        const deltaSeconds = deltaTime / 1000;
-        const movement = bullet.velocityX * deltaSeconds;
-        
-        if (isNaN(movement)) {
-          console.error(`NaN movement for bullet ${bullet.id}: velocityX=${bullet.velocityX}, deltaSeconds=${deltaSeconds}`);
-          bulletsToRemove.push(index);
-          return;
-        }
-        
-        bullet.x += movement;
+        // Update bullet position to the next position we calculated
+        bullet.x = bulletNextX;
         
         // Check collision with platforms
         const platformHit = checkBulletPlatformCollision({
@@ -269,9 +297,11 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
         
         if (platformHit) {
           // Bullet hit a platform, mark for removal
+          console.log("update: Bullet hit a platform", bullet.x, bullet.y, platformHit);
           bulletsToRemove.push(index);
         } else if (bullet.x < -100 || bullet.x > 3100) {
           // Remove bullets that are off-screen
+          console.log("update: Bullet went off-screen");
           bulletsToRemove.push(index);
         }
       }

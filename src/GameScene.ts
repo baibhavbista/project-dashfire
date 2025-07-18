@@ -117,7 +117,7 @@ export class GameScene extends Phaser.Scene {
     this.gameHUD = new GameHUD(this);
     this.killFeed = new KillFeed(this);
     
-    // Set up bullet-platform collision detection (visual effects only)
+    // Set up bullet-platform collision detection (visual effects only in multiplayer)
     const bullets = this.weaponSystem.getBulletPool().getBullets();
     this.physics.add.overlap(bullets, this.platforms, (bulletObj) => {
       const bullet = bulletObj as Bullet;
@@ -126,10 +126,11 @@ export class GameScene extends Phaser.Scene {
       this.effectsSystem.createBulletImpactEffect(bullet.x, bullet.y);
       
       // In single-player mode, we handle collision locally
-      // In multiplayer, the server is authoritative
+      // In multiplayer, the server is authoritative and will tell us when to remove bullets
       if (!this.isMultiplayer) {
         this.weaponSystem.getBulletPool().deactivateBullet(bullet);
       }
+      // In multiplayer, we just show the effect and wait for server to remove the bullet
     });
 
     // Setup multiplayer if connected
@@ -268,6 +269,13 @@ export class GameScene extends Phaser.Scene {
     this.effectsSystem.destroy();
     this.gameHUD.destroy();
     this.killFeed.destroy();
+  }
+
+  /**
+   * Get the weapon system (for MultiplayerCoordinator)
+   */
+  public getWeaponSystem(): WeaponSystem {
+    return this.weaponSystem;
   }
 
 }

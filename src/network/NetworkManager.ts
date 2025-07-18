@@ -88,6 +88,7 @@ export class NetworkManager extends Phaser.Events.EventEmitter {
         
         // Set up listeners only after state is available AND we have our player ID
         if (!this.listenersSetup && state.players && state.bullets) {
+          console.log("Setting up state listeners");
           this.setupStateListeners(state);
           this.listenersSetup = true;
           
@@ -174,10 +175,12 @@ export class NetworkManager extends Phaser.Events.EventEmitter {
 
     // Listen for bullet updates
     state.bullets.onAdd = (bullet: BulletData) => {
+      console.log("bullet-added", bullet);
       this.emit("bullet-added", bullet);
     };
 
     state.bullets.onRemove = (bullet: BulletData) => {
+      console.log("bullet-removed", bullet);
       this.emit("bullet-removed", bullet);
     };
   }

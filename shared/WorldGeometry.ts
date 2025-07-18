@@ -92,11 +92,21 @@ export function checkAABBCollision(
   const rect1Right = rect1.x + rect1.width / 2;
   const rect1Top = rect1.y - rect1.height / 2;
   const rect1Bottom = rect1.y + rect1.height / 2;
+
+  // console.log("checkAABBCollision: rect1Left", rect1Left);
+  // console.log("checkAABBCollision: rect1Right", rect1Right);
+  // console.log("checkAABBCollision: rect1Top", rect1Top);
+  // console.log("checkAABBCollision: rect1Bottom", rect1Bottom);
   
   const rect2Left = rect2.x - rect2.width / 2;
   const rect2Right = rect2.x + rect2.width / 2;
   const rect2Top = rect2.y - rect2.height / 2;
   const rect2Bottom = rect2.y + rect2.height / 2;
+  
+  // console.log("checkAABBCollision: rect2Left", rect2Left);
+  // console.log("checkAABBCollision: rect2Right", rect2Right);
+  // console.log("checkAABBCollision: rect2Top", rect2Top);
+  // console.log("checkAABBCollision: rect2Bottom", rect2Bottom);
   
   return rect1Left < rect2Right &&
          rect1Right > rect2Left &&
@@ -138,8 +148,10 @@ export function checkBulletPlatformCollision(
   
   for (const platform of platforms) {
     if (checkAABBCollision(bulletRect, platform)) {
+      console.log("checkBulletPlatformCollision: Bullet hit a platform", bullet.x, bullet.y, platform.x, platform.y);
       return platform;
     }
   }
+  console.log("checkBulletPlatformCollision: Bullet did not hit a platform", bullet.x, bullet.y);
   return null;
 } 

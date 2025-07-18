@@ -180,11 +180,11 @@ export class RemotePlayer extends BasePlayer {
   }
   
   /**
-   * Update jump and landing predictions
+   * Update jump and landing prediction based on velocity
    */
   private updateJumpLandPrediction(velocityY: number): void {
-    // Predict jumping (strong upward velocity)
-    if (velocityY < -this.jumpPredictionThreshold && !this.predictedJumping) {
+    // Predict jump start (sudden upward velocity - negative Y is up)
+    if (!this.predictedJumping && velocityY < -this.jumpPredictionThreshold) {
       this.predictedJumping = true;
       this.predictedLanding = false;
     }
@@ -195,9 +195,15 @@ export class RemotePlayer extends BasePlayer {
       this.predictedLanding = true;
       
       // Clear landing prediction after a short time
-      this.scene.time.delayedCall(this.landingPredictionWindow, () => {
+      // Check if scene and time system are available
+      if (this.scene && this.scene.time) {
+        this.scene.time.delayedCall(this.landingPredictionWindow, () => {
+          this.predictedLanding = false;
+        });
+      } else {
+        // Fallback: immediately clear landing prediction
         this.predictedLanding = false;
-      });
+      }
     }
   }
   
