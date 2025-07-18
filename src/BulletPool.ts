@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { SHARED_CONFIG } from '../shared/GameConstants';
 
 export interface Bullet extends Phaser.Physics.Arcade.Sprite {
   isActive: boolean;
@@ -8,9 +9,6 @@ export class BulletPool {
   private scene: Phaser.Scene;
   private bullets: Bullet[] = [];
   private readonly POOL_SIZE = 30;
-  private readonly BULLET_SPEED = 700;
-  private readonly BULLET_WIDTH = 10;
-  private readonly BULLET_HEIGHT = 6;
 
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -23,7 +21,7 @@ export class BulletPool {
       const bullet = this.scene.physics.add.sprite(0, 0, 'white-rect') as Bullet;
       
       // Set bullet appearance
-      bullet.setDisplaySize(this.BULLET_WIDTH, this.BULLET_HEIGHT);
+      bullet.setDisplaySize(SHARED_CONFIG.BULLET.WIDTH, SHARED_CONFIG.BULLET.HEIGHT);
       bullet.setTint(0xFFFFFF); // White by default, will be tinted with team color
       bullet.setActive(false);
       bullet.setVisible(false);
@@ -31,7 +29,7 @@ export class BulletPool {
       
       // Configure physics
       const body = bullet.body as Phaser.Physics.Arcade.Body;
-      body.setSize(this.BULLET_WIDTH, this.BULLET_HEIGHT);
+      body.setSize(SHARED_CONFIG.BULLET.WIDTH, SHARED_CONFIG.BULLET.HEIGHT);
       body.allowGravity = false; // Bullets don't fall
       
       this.bullets.push(bullet);
@@ -62,11 +60,11 @@ export class BulletPool {
     }
     
     // Set velocity based on direction
-    bullet.setVelocityX(this.BULLET_SPEED * direction);
+    bullet.setVelocityX(SHARED_CONFIG.BULLET.SPEED * direction);
     bullet.setVelocityY(0);
     
     // Auto-deactivate if bullet goes off screen
-    this.scene.time.delayedCall(3000, () => {
+    this.scene.time.delayedCall(SHARED_CONFIG.BULLET.LIFETIME_MS, () => {
       if (bullet.isActive) {
         this.deactivateBullet(bullet);
       }

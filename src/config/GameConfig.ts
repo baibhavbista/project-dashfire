@@ -52,9 +52,6 @@ export const GAME_CONFIG = {
   
   // Weapon configuration
   WEAPON: {
-    BULLET_SPEED: 700,
-    BULLET_WIDTH: 10,
-    BULLET_HEIGHT: 6,
     FIRE_RATE: 200,             // milliseconds between shots
   },
   

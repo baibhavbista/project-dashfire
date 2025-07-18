@@ -36,9 +36,9 @@ export class WeaponSystem {
     this.bulletPool.update();
   }
 
-  shoot(isPlayerDashing: boolean, teamColor?: number): boolean {
-    // Can't shoot while dashing or on cooldown
-    if (!this.canShoot || isPlayerDashing || this.shootCooldown > 0) {
+  shoot(teamColor?: number): boolean {
+    // Can't shoot while on cooldown or if player is dashing
+    if (!this.canShoot || this.shootCooldown > 0 || this.player.isDashing) {
       return false;
     }
 

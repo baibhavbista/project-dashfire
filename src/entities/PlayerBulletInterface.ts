@@ -21,7 +21,6 @@ export class PlayerBulletInterface {
   ): {
     x: number;
     y: number;
-    velocityX: number;
     color: number;
   } {
     // Get gun offsets from texture manager
@@ -35,16 +34,12 @@ export class PlayerBulletInterface {
     
     const bulletY = playerY - gunYOffset; // From bottom of sprite
     
-    // Bullet velocity
-    const bulletVelocityX = 800 * direction; // Using constant for now
-    
     // Team color for bullet
     const bulletColor = team === "blue" ? 0x5DADE2 : 0xFF6B6B;
     
     return {
       x: bulletX,
       y: bulletY,
-      velocityX: bulletVelocityX,
       color: bulletColor
     };
   }

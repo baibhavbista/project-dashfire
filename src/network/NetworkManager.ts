@@ -192,7 +192,7 @@ export class NetworkManager extends Phaser.Events.EventEmitter {
     this.room.send("dash", { isDashing });
   }
 
-  sendShoot(data: { x: number; y: number; velocityX: number }): void {
+  sendShoot(data: { x: number; y: number }): void {
     if (!this.room) return;
     this.room.send("shoot", data);
   }

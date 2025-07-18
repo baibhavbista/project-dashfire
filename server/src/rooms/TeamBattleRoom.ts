@@ -1,8 +1,9 @@
-import { Room, Client } from "colyseus";
+import { Room, Client } from "@colyseus/core";
 import { TeamBattleState } from "./schema/TeamBattleState";
 import { Player } from "./schema/Player";
 import { Bullet } from "./schema/Bullet";
 import { checkBulletPlatformCollision } from "../../../shared/WorldGeometry";
+import { SHARED_CONFIG } from "../../../shared/GameConstants";
 
 export class TeamBattleRoom extends Room<TeamBattleState> {
   maxClients = 8; // 4v4
@@ -32,11 +33,15 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
     this.onMessage("shoot", (client, data) => {
       const player = this.state.players.get(client.sessionId);
       if (player && !player.isDead && this.state.gameState === "playing") {
-        // Validate bullet data
-        if (!data || isNaN(data.x) || isNaN(data.y) || isNaN(data.velocityX)) {
+        // Validate basic bullet position data
+        if (!data || isNaN(data.x) || isNaN(data.y)) {
           console.error(`Invalid shoot data from ${client.sessionId}:`, data);
           return;
         }
+        
+        // Server calculates velocity based on player direction
+        const direction = player.flipX ? -1 : 1;
+        const velocityX = SHARED_CONFIG.BULLET.SPEED * direction;
         
         // Create bullet
         const bulletId = `${client.sessionId}-${Date.now()}`;
@@ -44,7 +49,7 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
           bulletId,
           data.x,
           data.y,
-          data.velocityX,
+          velocityX,  // Server-calculated velocity
           client.sessionId,
           player.team
         );
@@ -62,13 +67,13 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
         
         this.state.bullets.push(bullet);
         
-        // Remove bullet after 3 seconds (but check if it still exists)
+        // Remove bullet after lifetime expires
         this.clock.setTimeout(() => {
           const index = this.state.bullets.findIndex(b => b.id === bulletId);
           if (index !== -1) {
             this.state.bullets.splice(index, 1);
           }
-        }, 3000);
+        }, SHARED_CONFIG.BULLET.LIFETIME_MS);
       }
     });
     
@@ -184,7 +189,7 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
             Math.abs(player.y - bullet.y) < 24) {
           
           // Hit detected
-          player.health -= 10; // 10 damage per bullet
+          player.health -= SHARED_CONFIG.BULLET.DAMAGE;
           
           if (player.health <= 0) {
             player.isDead = true;
@@ -246,8 +251,8 @@ export class TeamBattleRoom extends Room<TeamBattleState> {
         const platformHit = checkBulletPlatformCollision({
           x: bullet.x,
           y: bullet.y,
-          width: 10,
-          height: 6
+          width: SHARED_CONFIG.BULLET.WIDTH,
+          height: SHARED_CONFIG.BULLET.HEIGHT
         });
         
         if (platformHit) {

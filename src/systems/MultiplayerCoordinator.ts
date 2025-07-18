@@ -9,6 +9,7 @@ import { GameHUD } from '../ui/GameHUD';
 import { KillFeed } from '../ui/KillFeed';
 import { EffectsSystem } from './EffectsSystem';
 import { SoundManager } from '../SoundManager';
+import { SHARED_CONFIG } from '../../shared/GameConstants';
 
 /**
  * MultiplayerCoordinator - Manages all multiplayer functionality
@@ -173,13 +174,19 @@ export class MultiplayerCoordinator {
       if (bullet.ownerId !== this.localPlayerId) {
         // Create visual bullet with team color
         const bulletColor = bullet.ownerTeam === "blue" ? COLORS.TEAMS.BLUE.GLOW : COLORS.TEAMS.RED.GLOW;
-        const bulletSprite = this.scene.add.rectangle(bullet.x, bullet.y, 10, 6, bulletColor);
+        const bulletSprite = this.scene.add.rectangle(
+          bullet.x, 
+          bullet.y, 
+          SHARED_CONFIG.BULLET.WIDTH, 
+          SHARED_CONFIG.BULLET.HEIGHT, 
+          bulletColor
+        );
         
         // Animate bullet
         this.scene.tweens.add({
           targets: bulletSprite,
-          x: bullet.x + (bullet.velocityX * 3), // 3 seconds of travel
-          duration: 3000,
+          x: bullet.x + (bullet.velocityX * (SHARED_CONFIG.BULLET.LIFETIME_MS / 1000)), // Convert ms to seconds
+          duration: SHARED_CONFIG.BULLET.LIFETIME_MS,
           onComplete: () => bulletSprite.destroy()
         });
       }

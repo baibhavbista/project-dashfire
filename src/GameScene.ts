@@ -199,18 +199,14 @@ export class GameScene extends Phaser.Scene {
       // Get team color for bullets
       const bulletColor = data.team === "blue" ? COLORS.TEAMS.BLUE.GLOW : COLORS.TEAMS.RED.GLOW;
       
-      if (this.weaponSystem.shoot(this.player.isDashing, bulletColor)) {
+      if (this.weaponSystem.shoot(bulletColor)) {
         this.soundManager.playShoot();
         
-        // Send shoot to server if multiplayer
+        // Send shoot to server if multiplayer (server will calculate velocity)
         if (this.isMultiplayer && this.networkManager) {
-          const bulletSpeed = this.player.isDashing ? 1000 : 600;
-          const velocityX = data.direction * bulletSpeed;
-          
           this.networkManager.sendShoot({
             x: data.x,
-            y: data.y,
-            velocityX: velocityX
+            y: data.y
           });
         }
       }
