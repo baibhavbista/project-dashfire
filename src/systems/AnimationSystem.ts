@@ -170,13 +170,16 @@ export class AnimationSystem {
       }
     }
 
-    // Create new trail
+    // Create new trail that captures the current sprite scale/size
     const trail = this.scene.add.sprite(sprite.x, sprite.y, textureKey);
-    trail.setDisplaySize(GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
+    
+    // Copy the exact scale from the sprite (including any stretch/squash)
+    trail.setScale(sprite.scaleX, sprite.scaleY);
+    
     trail.setBlendMode(Phaser.BlendModes.ADD); // Make the trail glow
     trail.setAlpha(0.5); // Lower alpha for additive blending
     trail.setFlipX(sprite.flipX);
-    trail.setOrigin(0.5, 1);
+    trail.setOrigin(sprite.originX, sprite.originY); // Copy exact origin
 
     state.dashTrails.push(trail);
 
@@ -216,16 +219,16 @@ export class AnimationSystem {
     predictedJumping: boolean,
     predictedLanding: boolean,
     _smoothVelocityX: number, // eslint-disable-line @typescript-eslint/no-unused-vars
-    isDashing: boolean
+    isDashing: boolean // eslint-disable-line @typescript-eslint/no-unused-vars
   ): void {
-    // Jump anticipation
-    if (predictedJumping && !isDashing) {
+    // Jump anticipation - allow during dashing
+    if (predictedJumping) {
       const stretchScale = 1.1;
       sprite.setScale(1 / stretchScale, stretchScale);
     }
     
-    // Landing preparation
-    if (predictedLanding && !isDashing) {
+    // Landing preparation - allow during dashing
+    if (predictedLanding) {
       const compressScale = 0.95;
       sprite.setScale(1 / compressScale, compressScale);
     }
@@ -327,8 +330,7 @@ export class AnimationSystem {
     // If we are in the middle of a landing or jump anticipation, let the tweens handle it
     if (state.isLanding || (state.isJumping && isGrounded)) return;
     
-    // Skip if dashing
-    if (isDashing) return;
+    // Don't skip deformation during dashing - we want to capture the current height
     
     if (!isGrounded) {
       // If the player is moving downwards (after the jump's peak), return to a neutral scale.
