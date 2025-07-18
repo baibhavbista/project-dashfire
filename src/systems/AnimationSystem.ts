@@ -134,17 +134,17 @@ export class AnimationSystem {
       state.landingSquashTween.stop();
     }
     
-    // Immediate squash
-    sprite.setScale(1.3, 0.7);
+    // More subtle squash (was 1.3, 0.7)
+    sprite.setScale(1.15, 0.9);
     state.isLanding = true;
     
-    // Bounce back with overshoot
+    // Bounce back with gentle overshoot
     state.landingSquashTween = this.scene.tweens.add({
       targets: sprite,
       scaleX: 1,
       scaleY: 1,
       duration: GAME_CONFIG.ANIMATION.JUMP.LANDING_DURATION,
-      ease: 'Back.easeOut',
+      ease: 'Cubic.easeOut',  // Changed from Back.easeOut for subtler effect
       onComplete: () => {
         state.landingSquashTween = undefined;
         state.isLanding = false;
@@ -212,7 +212,7 @@ export class AnimationSystem {
     state: AnimationState,
     predictedJumping: boolean,
     predictedLanding: boolean,
-    smoothVelocityX: number,
+    _smoothVelocityX: number, // eslint-disable-line @typescript-eslint/no-unused-vars
     isDashing: boolean
   ): void {
     // Jump anticipation
@@ -227,15 +227,8 @@ export class AnimationSystem {
       sprite.setScale(1 / compressScale, compressScale);
     }
     
-    // Enhanced movement anticipation
-    if (Math.abs(smoothVelocityX) > 50) {
-      const leanAngle = Phaser.Math.Clamp(
-        smoothVelocityX * GAME_CONFIG.ANIMATION.LEAN_MULTIPLIER * 1.2, 
-        -GAME_CONFIG.ANIMATION.LEAN_MAX_ANGLE * 1.2, 
-        GAME_CONFIG.ANIMATION.LEAN_MAX_ANGLE * 1.2
-      );
-      sprite.setRotation(Phaser.Math.DegToRad(leanAngle));
-    }
+    // Movement lean disabled - keep sprite upright
+    // (Previously applied enhanced lean for remote players)
   }
   
   // Private helper methods
@@ -243,7 +236,7 @@ export class AnimationSystem {
   private updateBreathingAnimation(
     sprite: Phaser.GameObjects.Sprite,
     state: AnimationState,
-    _isIdle: boolean
+    isIdle: boolean // eslint-disable-line @typescript-eslint/no-unused-vars
   ): void {
     // Breathing animation disabled
     // Always ensure breathing is stopped
@@ -262,26 +255,13 @@ export class AnimationSystem {
   private updateMovementLean(
     sprite: Phaser.GameObjects.Sprite,
     state: AnimationState,
-    velocityX: number,
-    isGrounded: boolean,
-    isDashing: boolean
+    _velocityX: number, // eslint-disable-line @typescript-eslint/no-unused-vars
+    _isGrounded: boolean, // eslint-disable-line @typescript-eslint/no-unused-vars
+    _isDashing: boolean // eslint-disable-line @typescript-eslint/no-unused-vars
   ): void {
-    const absVelX = Math.abs(velocityX);
-    
-    if (absVelX > 10 && !isDashing) {
-      // Apply lean based on velocity
-      const leanAngle = Phaser.Math.Clamp(
-        velocityX * GAME_CONFIG.ANIMATION.LEAN_MULTIPLIER, 
-        -GAME_CONFIG.ANIMATION.LEAN_MAX_ANGLE, 
-        GAME_CONFIG.ANIMATION.LEAN_MAX_ANGLE
-      );
-      sprite.setRotation(Phaser.Math.DegToRad(leanAngle));
-      state.currentRotation = leanAngle;
-    } else if (isGrounded && !isDashing) {
-      // Return to upright when idle
-      sprite.setRotation(0);
-      state.currentRotation = 0;
-    }
+    // Movement lean disabled - always keep sprite upright
+    sprite.setRotation(0);
+    state.currentRotation = 0;
   }
   
   private updateJumpDeformation(

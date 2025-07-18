@@ -126,14 +126,68 @@ export class GameScene extends Phaser.Scene {
     // Create local player
     const playerId = this.localPlayerId || 'local-player';
     
+    // Determine initial team - check if we already have one from NetworkManager
+    let initialTeam: Team = 'red'; // Default
+    let useNeutralTexture = true;
+    let initialX = 100;
+    let initialY = 1350;
+    
+    if (this.isMultiplayer && this.networkManager) {
+      const assignedTeam = this.networkManager.getPlayerTeam();
+      if (assignedTeam) {
+        initialTeam = assignedTeam;
+        useNeutralTexture = false;
+        console.log("Player already has team:", assignedTeam);
+      }
+    } else {
+      // Single-player mode: random team and position
+      initialTeam = Math.random() < 0.5 ? 'red' : 'blue';
+      useNeutralTexture = false; // Always have a team in single-player
+      
+      // Random X position across the arena width
+      initialX = Phaser.Math.Between(100, ARENA_WIDTH - 100);
+      
+      // Random Y position - either on main platform or one of the elevated platforms
+      const platformChoice = Math.random();
+      if (platformChoice < 0.4) {
+        // Main platform
+        initialY = MAIN_PLATFORM.y - 50;
+      } else {
+        // Pick a random elevated platform
+        const randomPlatform = ELEVATED_PLATFORMS[Math.floor(Math.random() * ELEVATED_PLATFORMS.length)];
+        initialX = Phaser.Math.Between(randomPlatform.x - randomPlatform.width/2 + 50, 
+                                      randomPlatform.x + randomPlatform.width/2 - 50);
+        initialY = randomPlatform.y - 50;
+      }
+      
+      console.log(`Single-player mode: Random team ${initialTeam} at position (${initialX}, ${initialY})`);
+    }
+    
+    // Create a neutral gray texture for unassigned players (only if needed)
+    if (useNeutralTexture) {
+      const neutralKey = 'neutral-player';
+      if (!this.textures.exists(neutralKey)) {
+        const graphics = this.add.graphics();
+        graphics.fillStyle(0x888888, 1); // Gray color for unassigned
+        graphics.fillRect(0, 0, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
+        graphics.generateTexture(neutralKey, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
+        graphics.destroy();
+      }
+    }
+    
     this.player = new LocalPlayer(
       this,
       playerId,
-      100,
-      1350,
-      'red' as Team, // Default to red team - cast to Team type
+      initialX,
+      initialY,
+      initialTeam,
       'You'
     );
+    
+    // Only override to neutral texture if we don't have a team yet
+    if (useNeutralTexture) {
+      this.player.setTexture('neutral-player');
+    }
     
     // Add collision with platforms
     this.physics.add.collider(this.player, this.platforms);
@@ -341,18 +395,33 @@ export class GameScene extends Phaser.Scene {
     this.networkManager.on("team-assigned", (data: { playerId: string; team: "red" | "blue"; roomId: string }) => {
       this.localPlayerId = data.playerId;
       
-      // Create team-specific texture and update player
-      const teamColor = data.team === "red" ? COLORS.TEAMS.RED.PRIMARY : COLORS.TEAMS.BLUE.PRIMARY;
+      console.log(`Team assignment received: ${data.team} (was: ${this.player.team})`);
       
-      // Create team-colored texture
-      const teamGraphics = this.add.graphics();
-      teamGraphics.fillStyle(teamColor, 1);
-      teamGraphics.fillRect(0, 0, 32, 48); // Back to normal size
-      teamGraphics.generateTexture(`${data.team}-player`, 32, 48);
-      teamGraphics.destroy();
+      // Update player team
+      this.player.team = data.team;
       
-      // Update player texture
-      this.player.setTexture(`${data.team}-player`);
+      // Create the correct team texture if it doesn't exist
+      const textureKey = `${data.team}-player`;
+      const teamColors = getTeamColors(data.team);
+      
+      // Always recreate the texture to ensure it's fresh
+      const graphics = this.add.graphics();
+      graphics.fillStyle(teamColors.PRIMARY, 1);
+      graphics.fillRect(0, 0, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
+      
+      // If texture exists, remove it first
+      if (this.textures.exists(textureKey)) {
+        this.textures.remove(textureKey);
+      }
+      
+      graphics.generateTexture(textureKey, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
+      graphics.destroy();
+      
+      // Force texture update
+      this.player.setTexture(textureKey);
+      this.player.setFrame(0); // Force frame refresh
+      
+      console.log(`Texture updated to: ${textureKey}, color: 0x${teamColors.PRIMARY.toString(16)}`);
       
       // Teleport to team spawn point
       const spawnPos = getSpawnPosition(data.team);
@@ -526,9 +595,31 @@ export class GameScene extends Phaser.Scene {
     // Set initial team color
     const team = this.networkManager.getPlayerTeam();
     if (team) {
-      const teamColors = getTeamColors(team);
-      this.player.setTint(teamColors.GLOW);
       console.log("Already assigned to team:", team);
+      
+      // Update the player's team and texture
+      this.player.team = team;
+      
+      // Create and set the correct team texture
+      const textureKey = `${team}-player`;
+      const teamColors = getTeamColors(team);
+      
+      // Always recreate the texture to ensure it's fresh
+      const graphics = this.add.graphics();
+      graphics.fillStyle(teamColors.PRIMARY, 1);
+      graphics.fillRect(0, 0, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
+      
+      // If texture exists, remove it first
+      if (this.textures.exists(textureKey)) {
+        this.textures.remove(textureKey);
+      }
+      
+      graphics.generateTexture(textureKey, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
+      graphics.destroy();
+      
+      // Force texture update
+      this.player.setTexture(textureKey);
+      console.log(`Updated texture to ${textureKey} for already assigned team ${team}`);
       
       // Teleport to team spawn point if already assigned
       const spawnPos = getSpawnPosition(team);

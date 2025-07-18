@@ -16,7 +16,7 @@ export const GAME_CONFIG = {
     FRICTION: 2000,
     
     // Jump mechanics
-    JUMP_POWER: 680,
+    JUMP_POWER: 850,            // ~3x character height jump (144px for 48px tall character)
     COYOTE_TIME_MS: 100,        // Grace period for jumping after leaving platform
     
     // Dash mechanics
