@@ -12,12 +12,12 @@ export const GAME_CONFIG = {
     
     // Movement speeds
     MAX_SPEED: 300,
-    ACCELERATION: 1200,
-    FRICTION: 800,
+    ACCELERATION: 3600,
+    FRICTION: 2000,
     
     // Jump mechanics
-    JUMP_POWER: 550,
-    COYOTE_TIME_MS: 150,        // Grace period for jumping after leaving platform
+    JUMP_POWER: 680,
+    COYOTE_TIME_MS: 100,        // Grace period for jumping after leaving platform
     
     // Dash mechanics
     DASH: {
@@ -26,16 +26,16 @@ export const GAME_CONFIG = {
       COOLDOWN: 300,            // milliseconds (longer for network sync)
       MAX_TRAILS: 8,
       TRAIL_FADE_DURATION: 200,
-      BUFFER_WINDOW_MS: 75,     // Input buffer window
+      BUFFER_WINDOW_MS: 100,     // Input buffer window
     },
     
     // Physics
     GRAVITY: {
       DEFAULT: 800,
       FAST_FALL: 1000,
-      ASCENDING: 450,
-      HANG_TIME: 350,
-      FALLING: 900,
+      ASCENDING: 1800,
+      HANG_TIME: 800,
+      FALLING: 2400,
     },
     
     // Combat
@@ -190,6 +190,20 @@ export const GAME_CONFIG = {
     PREDICTION_ERROR_SNAP: 100, // Snap if error > this
     DASH_PREDICTION_TOLERANCE: 300,
     UPDATE_RATE: 16,            // ~60Hz in milliseconds
+    INTERPOLATION: {
+      DEFAULT: 0.2,
+      DASH: 0.4,
+      LARGE_DISTANCE: 0.5,
+      MEDIUM_DISTANCE: 0.3,
+      TRANSITION: 0.25
+    },
+    PREDICTION: {
+      TIME_DEFAULT: 0.05, // 50ms ahead
+      TIME_DASH: 0.03, // 30ms ahead during dash
+      JUMP_VELOCITY_THRESHOLD: -200,
+      LANDING_TIME_WINDOW: 0.3, // 300ms
+      VELOCITY_SMOOTH_FACTOR: 0.3
+    }
   },
   
   // Visual effects

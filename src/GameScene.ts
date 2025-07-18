@@ -45,9 +45,11 @@ export class GameScene extends Phaser.Scene {
   private scoreText?: Phaser.GameObjects.Text;
   private redScore: number = 0;
   private blueScore: number = 0;
-  
 
-  
+  // Network quality visualization
+  private showNetworkQuality: boolean = false;
+  private networkQualityIndicators: Map<string, Phaser.GameObjects.Graphics> = new Map();
+
   // Animation constants
   private readonly MAX_STRETCH: number = 1.20;
   private readonly MAX_SQUASH: number = 0.85;
@@ -365,6 +367,11 @@ export class GameScene extends Phaser.Scene {
       const remotePlayer = new RemotePlayer(this, player.id, player.x, player.y, player.team, player.name);
       this.remotePlayers.set(player.id, remotePlayer);
       console.log(`Player ${player.name} (${player.id}) joined on team ${player.team} at position (${player.x}, ${player.y})`);
+      
+      // Create network quality indicator for this player
+      const indicator = this.add.graphics();
+      indicator.setVisible(this.showNetworkQuality);
+      this.networkQualityIndicators.set(player.id, indicator);
     });
     
     this.networkManager.on("player-removed", (playerId: string) => {
@@ -374,6 +381,13 @@ export class GameScene extends Phaser.Scene {
         remotePlayer.destroy();
         this.remotePlayers.delete(playerId);
         console.log(`Player ${playerId} removed successfully`);
+        
+        // Remove network quality indicator
+        const indicator = this.networkQualityIndicators.get(playerId);
+        if (indicator) {
+          indicator.destroy();
+          this.networkQualityIndicators.delete(playerId);
+        }
       }
     });
     
@@ -590,6 +604,14 @@ export class GameScene extends Phaser.Scene {
       if (this.debugText) {
         this.debugText.setVisible(!this.debugText.visible);
       }
+    });
+    
+    // Toggle network quality visualization with F4
+    this.input.keyboard?.on('keydown-F4', () => {
+      this.showNetworkQuality = !this.showNetworkQuality;
+      this.networkQualityIndicators.forEach(indicator => {
+        indicator.setVisible(this.showNetworkQuality);
+      });
     });
   }
   
@@ -841,6 +863,11 @@ export class GameScene extends Phaser.Scene {
     // Update weapon system
     this.weaponSystem.update(delta);
     
+    // Update network quality indicators
+    if (this.showNetworkQuality) {
+      this.updateNetworkQualityIndicators();
+    }
+    
     // Apply smooth reconciliation if we have prediction error
     if (this.predictionError.x !== 0 || this.predictionError.y !== 0) {
       const reconcileX = this.predictionError.x * this.reconciliationSpeed * (delta / 1000);
@@ -911,7 +938,42 @@ export class GameScene extends Phaser.Scene {
     }
   }
   
-
-  
+  /**
+   * Update network quality visualization for remote players
+   */
+  private updateNetworkQualityIndicators(): void {
+    this.remotePlayers.forEach((remotePlayer, playerId) => {
+      const indicator = this.networkQualityIndicators.get(playerId);
+      if (!indicator) return;
+      
+      // Clear previous drawing
+      indicator.clear();
+      
+      // Get interpolation data from remote player
+      const dx = Math.abs(remotePlayer.x - remotePlayer.getTargetX());
+      const dy = Math.abs(remotePlayer.y - remotePlayer.getTargetY());
+      const distance = Math.sqrt(dx * dx + dy * dy);
+      
+      // Color based on prediction accuracy
+      let color = 0x00FF00; // Green - good
+      if (distance > 50) {
+        color = 0xFFFF00; // Yellow - medium
+      }
+      if (distance > 100) {
+        color = 0xFF0000; // Red - poor
+      }
+      
+      // Draw indicator
+      indicator.lineStyle(2, color, 0.8);
+      indicator.strokeCircle(remotePlayer.x, remotePlayer.y - 70, 5);
+      
+      // Draw prediction line
+      indicator.lineStyle(1, color, 0.4);
+      indicator.beginPath();
+      indicator.moveTo(remotePlayer.x, remotePlayer.y);
+      indicator.lineTo(remotePlayer.getTargetX(), remotePlayer.getTargetY());
+      indicator.strokePath();
+    });
+  }
 
 }

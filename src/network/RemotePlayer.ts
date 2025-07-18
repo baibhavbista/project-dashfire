@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { BasePlayer } from '../entities/BasePlayer';
-import { Team } from '../config/GameConfig';
+import { Team, GAME_CONFIG } from '../config/GameConfig';
 
 /**
  * Remote player class for networked players
@@ -12,7 +12,23 @@ export class RemotePlayer extends BasePlayer {
   private targetY: number;
   private targetVelocityX: number = 0;
   private targetVelocityY: number = 0;
-  private interpolationFactor: number = 0.2;
+  private interpolationFactor: number = GAME_CONFIG.NETWORK.INTERPOLATION.DEFAULT;
+  
+  // Smoothed velocity for animations
+  private smoothVelocityX: number = 0;
+  private smoothVelocityY: number = 0;
+  private velocitySmoothFactor: number = GAME_CONFIG.NETWORK.PREDICTION.VELOCITY_SMOOTH_FACTOR;
+  
+  // Prediction state
+  private predictedGrounded: boolean = false;
+  private lastGroundedY: number = 0;
+  private airTime: number = 0;
+  private predictedJumping: boolean = false;
+  private predictedLanding: boolean = false;
+  
+  // Animation prediction
+  private jumpPredictionThreshold: number = GAME_CONFIG.NETWORK.PREDICTION.JUMP_VELOCITY_THRESHOLD;
+  private landingPredictionWindow: number = GAME_CONFIG.NETWORK.PREDICTION.LANDING_TIME_WINDOW;
   
   // Gun visual (not in BasePlayer)
   private gun?: Phaser.GameObjects.Rectangle;
@@ -30,6 +46,7 @@ export class RemotePlayer extends BasePlayer {
     // Initialize network position
     this.targetX = x;
     this.targetY = y;
+    this.lastGroundedY = y;
     
     // Disable physics for remote players (controlled by server)
     const body = this.body as Phaser.Physics.Arcade.Body;
@@ -64,22 +81,48 @@ export class RemotePlayer extends BasePlayer {
     this.targetVelocityX = velocityX;
     this.targetVelocityY = velocityY;
     
+    // Smooth velocity for animations
+    this.smoothVelocityX = Phaser.Math.Linear(
+      this.smoothVelocityX, 
+      velocityX, 
+      this.velocitySmoothFactor
+    );
+    this.smoothVelocityY = Phaser.Math.Linear(
+      this.smoothVelocityY, 
+      velocityY, 
+      this.velocitySmoothFactor
+    );
+    
+    // Predict ground state
+    this.updateGroundPrediction();
+    
+    // Predict jump and landing
+    this.predictMovementStates();
+    
     // Calculate distance to target
     const dx = this.targetX - this.x;
     const dy = this.targetY - this.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
     
-    // Adjust interpolation based on distance
+    // Adjust interpolation based on state and distance
     let lerpFactor = this.interpolationFactor;
-    if (distance > 100) {
-      lerpFactor = 0.5; // Faster catch-up for large distances
+    
+    if (isDashing) {
+      lerpFactor = GAME_CONFIG.NETWORK.INTERPOLATION.DASH;
+    } else if (distance > 100) {
+      lerpFactor = GAME_CONFIG.NETWORK.INTERPOLATION.LARGE_DISTANCE;
     } else if (distance > 50) {
-      lerpFactor = 0.3;
+      lerpFactor = GAME_CONFIG.NETWORK.INTERPOLATION.MEDIUM_DISTANCE;
+    } else if (this.predictedJumping || this.predictedLanding) {
+      lerpFactor = GAME_CONFIG.NETWORK.INTERPOLATION.TRANSITION;
     }
     
     // Smooth interpolation with velocity prediction
-    const predictedX = this.targetX + (this.targetVelocityX * 0.05); // Predict 50ms ahead
-    const predictedY = this.targetY + (this.targetVelocityY * 0.05);
+    const predictionTime = isDashing ? 
+      GAME_CONFIG.NETWORK.PREDICTION.TIME_DASH : 
+      GAME_CONFIG.NETWORK.PREDICTION.TIME_DEFAULT;
+    const predictedX = this.targetX + (this.targetVelocityX * predictionTime);
+    const predictedY = this.targetY + (this.targetVelocityY * predictionTime);
     
     this.x = Phaser.Math.Linear(this.x, predictedX, lerpFactor);
     this.y = Phaser.Math.Linear(this.y, predictedY, lerpFactor);
@@ -121,11 +164,114 @@ export class RemotePlayer extends BasePlayer {
       this.createDashTrail();
     }
     
-    // Update animations
-    this.updateCharacterAnimations(this.targetVelocityX);
+    // Update animations with smoothed velocity for better visuals
+    this.updateCharacterAnimations(this.smoothVelocityX);
+    
+    // Apply predictive animations
+    this.applyPredictiveAnimations();
     
     // Update UI positions
     this.updateUIPositions();
+  }
+  
+  /**
+   * Update ground state prediction based on velocity and position
+   */
+  private updateGroundPrediction(): void {
+    const wasGrounded = this.predictedGrounded;
+    
+    // Simple ground detection based on velocity and position stability
+    const verticalSpeed = Math.abs(this.smoothVelocityY);
+    const isNearGround = Math.abs(this.y - this.lastGroundedY) < 10;
+    
+    if (verticalSpeed < 50 && isNearGround) {
+      this.predictedGrounded = true;
+      this.lastGroundedY = this.y;
+      this.airTime = 0;
+    } else {
+      this.predictedGrounded = false;
+      this.airTime += this.scene.game.loop.delta;
+    }
+    
+    // Update BasePlayer's ground state for animations
+    this.isGrounded = this.predictedGrounded;
+    this.wasGrounded = wasGrounded;
+  }
+  
+  /**
+   * Predict jump and landing states based on velocity
+   */
+  private predictMovementStates(): void {
+    // Reset predictions
+    this.predictedJumping = false;
+    this.predictedLanding = false;
+    
+    // Predict jump start
+    if (this.predictedGrounded && this.smoothVelocityY < this.jumpPredictionThreshold) {
+      this.predictedJumping = true;
+    }
+    
+    // Predict landing
+    if (!this.predictedGrounded && this.smoothVelocityY > 100) {
+      // Estimate time to ground based on velocity
+      const timeToGround = (this.lastGroundedY - this.y) / this.smoothVelocityY;
+      
+      if (timeToGround > 0 && timeToGround < this.landingPredictionWindow) {
+        this.predictedLanding = true;
+      }
+    }
+  }
+  
+  /**
+   * Apply predictive animations based on predicted states
+   */
+  private applyPredictiveAnimations(): void {
+    // Jump anticipation
+    if (this.predictedJumping && !this._isDashing) {
+      // Start stretch animation early
+      const stretchScale = 1.1;
+      this.setScale(1 / stretchScale, stretchScale);
+    }
+    
+    // Landing preparation
+    if (this.predictedLanding && !this._isDashing) {
+      // Start compression animation early
+      const compressScale = 0.95;
+      this.setScale(1 / compressScale, compressScale);
+    }
+    
+    // Enhanced idle breathing for remote players
+    if (this.predictedGrounded && Math.abs(this.smoothVelocityX) < 10 && !this._isDashing) {
+      // Stronger breathing animation for remote players
+      if (!this.breathingTween) {
+        this.startBreathingAnimation();
+      }
+    }
+    
+    // Movement anticipation
+    if (Math.abs(this.smoothVelocityX) > 50) {
+      // Lean into movement direction
+      const leanAngle = Phaser.Math.Clamp(
+        this.smoothVelocityX * GAME_CONFIG.ANIMATION.LEAN_MULTIPLIER * 1.2, 
+        -GAME_CONFIG.ANIMATION.LEAN_MAX_ANGLE * 1.2, 
+        GAME_CONFIG.ANIMATION.LEAN_MAX_ANGLE * 1.2
+      );
+      this.setRotation(Phaser.Math.DegToRad(leanAngle));
+    }
+  }
+  
+  /**
+   * Get target X position for debug visualization
+   */
+  public getTargetX(): number {
+    return this.targetX;
+  }
+  
+  /**
+   * Get target Y position for debug visualization
+   */
+  public getTargetY(): number {
+    return this.targetY;
   }
   
   /**
