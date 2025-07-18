@@ -14,7 +14,7 @@ export class WeaponSystem {
   private readonly GUN_LENGTH: number = 24;
   private readonly GUN_WIDTH: number = 3;
   private readonly GUN_OFFSET_X: number = 8; // Offset from player center
-  private readonly GUN_OFFSET_Y: number = 0; // Height offset
+  private readonly GUN_OFFSET_Y: number = -24; // Height offset (adjusted for bottom-center origin)
 
   constructor(scene: Phaser.Scene, player: Phaser.Physics.Arcade.Sprite) {
     this.scene = scene;

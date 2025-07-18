@@ -42,7 +42,7 @@ export class RemotePlayer {
     // Create sprite
     this.sprite = scene.physics.add.sprite(x, y, 'white-rect');
     this.sprite.setDisplaySize(32, 48); // Back to normal size
-    this.sprite.setOrigin(0.5, 0.5); // Center origin for proper scaling
+    this.sprite.setOrigin(0.5, 1); // Bottom-center origin to match local player
     
     // Set team color - Thomas Was Alone vibrant colors
     const teamColor = team === "red" ? 0xE74C3C : 0x3498DB;
@@ -64,7 +64,7 @@ export class RemotePlayer {
     this.gun.setOrigin(0, 0.5);
     
     // Create name text
-    this.nameText = scene.add.text(x, y - 50, name || "Unknown", {
+    this.nameText = scene.add.text(x, y - 75, name || "Unknown", { // Adjusted for bottom-center origin
       fontSize: '14px',
       color: '#ffffff',
       stroke: '#000000',
@@ -75,7 +75,7 @@ export class RemotePlayer {
     // Create direction indicator
     this.directionIndicator = scene.add.triangle(
       x, 
-      y - 35, 
+      y - 60, // Adjusted for bottom-center origin
       0, 5,    // bottom left
       5, 0,    // top
       10, 5,   // bottom right
@@ -165,14 +165,14 @@ export class RemotePlayer {
     if (this.gun && this.gun.active) {
       const direction = flipX ? -1 : 1;
       const gunX = this.sprite.x + (8 * direction);
-      const gunY = this.sprite.y;
+      const gunY = this.sprite.y - 24; // Adjusted for bottom-center origin
       this.gun.setPosition(gunX, gunY);
       this.gun.setScale(direction, 1);
     }
     
     // Update health bar position
     if (this.healthBarBg && this.healthBar && this.healthBarBg.active && this.healthBar.active) {
-      const yOffset = -35;
+      const yOffset = -59; // Adjusted for bottom-center origin (was -35 for center origin)
       this.healthBarBg.setPosition(this.sprite.x, this.sprite.y + yOffset);
       this.healthBar.setPosition(this.sprite.x - 20, this.sprite.y + yOffset);
       
@@ -192,7 +192,7 @@ export class RemotePlayer {
     
     // Update name position
     if (this.nameText && this.nameText.active) {
-      this.nameText.setPosition(this.sprite.x, this.sprite.y - 50);
+      this.nameText.setPosition(this.sprite.x, this.sprite.y - 75); // Adjusted for bottom-center origin
     }
     
     // Handle death state
@@ -290,8 +290,8 @@ export class RemotePlayer {
     
     // Update direction indicator
     if (this.directionIndicator && this.directionIndicator.active) {
-      // Position above sprite
-      this.directionIndicator.setPosition(this.sprite.x, this.sprite.y - 35);
+      // Position above sprite (adjusted for bottom-center origin)
+      this.directionIndicator.setPosition(this.sprite.x, this.sprite.y - 60);
       
       // Point in movement direction
       if (Math.abs(this.targetVelocityX) > 10) {

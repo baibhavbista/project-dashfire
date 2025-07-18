@@ -85,12 +85,24 @@ export class GameScene extends Phaser.Scene {
   private lastVelocityX: number = 0;
   private isGrounded: boolean = false;
   private wasGrounded: boolean = false;
-  private landingSquashTween?: Phaser.Tweens.Tween;
+
   
-  // Jump launch animation
-  private jumpLaunchTime: number = 0;
-  private isJumpLaunching: boolean = false;
-  private readonly JUMP_LAUNCH_DURATION: number = 150; // 150ms stretch duration
+  // Thomas Was Alone style jump animation
+  private targetScaleX: number = 1;
+  private targetScaleY: number = 1;
+  private jumpAnticipationTime: number = 0;
+  private isAnticipatingJump: boolean = false;
+  private jumpVelocity: number = 0; // Track initial jump velocity
+  private justLandedThisFrame: boolean = false;
+  private landingRecoveryTime: number = 0;
+  
+  // Animation constants
+  private readonly MAX_STRETCH: number = 1.20;
+  private readonly MAX_SQUASH: number = 0.85;
+  private readonly ANTICIPATION_SQUASH: number = 0.95;
+  private readonly ANTICIPATION_DURATION: number = 50; // ~3 frames at 60fps
+  private readonly STRETCH_SPEED: number = 15; // How fast we interpolate to target
+  private readonly LANDING_DURATION: number = 100; // Recovery time after landing
 
   constructor() {
     super({ key: 'GameScene' });
@@ -161,7 +173,7 @@ export class GameScene extends Phaser.Scene {
     redGraphics.destroy();
     
     this.player = this.physics.add.sprite(100, 1350, 'red-player'); // Spawn near bottom of expanded arena
-    this.player.setOrigin(0.5, 0.5); // Center origin for proper scaling
+    this.player.setOrigin(0.5, 1); // Bottom-center origin for proper jump stretching
     
     // Ensure normal scale at start
     this.player.setScale(1, 1);
@@ -177,7 +189,7 @@ export class GameScene extends Phaser.Scene {
     // Create direction indicator (triangle above player)
     this.directionIndicator = this.add.triangle(
       this.player.x, 
-      this.player.y - 35, 
+      this.player.y - 60, // Adjusted for bottom-center origin
       0, 5,    // bottom left
       5, 0,    // top
       10, 5,   // bottom right
@@ -1206,8 +1218,7 @@ export class GameScene extends Phaser.Scene {
     this.player.setScale(1, 1);
     this.player.setRotation(0);
     
-    // Reset jump launch state
-    this.isJumpLaunching = false;
+
     
     // Reset initial dash directions
     this.initialDashDirections.left = false;
@@ -1305,31 +1316,61 @@ export class GameScene extends Phaser.Scene {
     this.wasGrounded = this.isGrounded;
     this.isGrounded = body.blocked.down || body.touching.down;
 
-    // Detect jump launch (transition from grounded to airborne with upward velocity)
-    if (this.wasGrounded && !this.isGrounded && velocityY < -100) {
-      // Start jump launch animation
-      this.isJumpLaunching = true;
-      this.jumpLaunchTime = this.time.now;
-    }
-
-    // Update jump launch animation
-    if (this.isJumpLaunching) {
-      const timeSinceLaunch = this.time.now - this.jumpLaunchTime;
-      if (timeSinceLaunch < this.JUMP_LAUNCH_DURATION) {
-        // Still in launch phase - apply stretch
-        this.player.setScale(0.8, 1.3);
+    // Detect landing this frame
+    this.justLandedThisFrame = !this.wasGrounded && this.isGrounded && velocityY > 50;
+    
+    // Thomas Was Alone style jump animation states
+    if (this.isGrounded) {
+      if (this.justLandedThisFrame) {
+        // Landing squash
+        this.targetScaleY = this.MAX_SQUASH;
+        this.targetScaleX = 1 / this.MAX_SQUASH; // Preserve volume
+        this.landingRecoveryTime = this.time.now;
+      } else if (this.time.now - this.landingRecoveryTime < this.LANDING_DURATION) {
+        // Spring-damped recovery from landing
+        const t = (this.time.now - this.landingRecoveryTime) / this.LANDING_DURATION;
+        const overshoot = 1 + Math.sin(t * Math.PI) * 0.05; // Slight overshoot
+        this.targetScaleY = overshoot;
+        this.targetScaleX = 1 / overshoot;
+      } else if (this.input.keyboard && (this.input.keyboard.addKey('W').isDown || 
+                 this.input.keyboard.addKey('ArrowUp').isDown || 
+                 this.input.keyboard.addKey(' ').isDown) && !this.isAnticipatingJump) {
+        // Start jump anticipation
+        this.isAnticipatingJump = true;
+        this.jumpAnticipationTime = this.time.now;
+        this.targetScaleY = this.ANTICIPATION_SQUASH;
+        this.targetScaleX = 1 / this.ANTICIPATION_SQUASH;
+      } else if (!this.isAnticipatingJump) {
+        // Normal standing
+        this.targetScaleY = 1;
+        this.targetScaleX = 1;
+      }
+    } else {
+      // In air
+      this.isAnticipatingJump = false;
+      
+      if (velocityY < 0) {
+        // Rising - stretch based on velocity
+        const t = Math.min(-velocityY / 800, 1); // 800 is roughly max jump velocity
+        this.targetScaleY = 1 + (this.MAX_STRETCH - 1) * t;
+        this.targetScaleX = 1 / this.targetScaleY;
+        
+        // Store jump velocity for later
+        if (this.wasGrounded) {
+          this.jumpVelocity = velocityY;
+        }
       } else {
-        // Launch phase over - return to normal
-        this.isJumpLaunching = false;
-        this.player.setScale(1, 1);
+        // Falling - gradually return to normal
+        const t = Math.min(velocityY / 400, 1);
+        this.targetScaleY = 1 + (this.MAX_STRETCH - 1) * (1 - t);
+        this.targetScaleX = 1 / this.targetScaleY;
       }
     }
-
-    // Landing squash effect
-    if (!this.wasGrounded && this.isGrounded && velocityY > 100) {
-      this.createLandingSquash();
-      // Reset jump launch state when landing
-      this.isJumpLaunching = false;
+    
+    // Handle jump anticipation timing
+    if (this.isAnticipatingJump && this.time.now - this.jumpAnticipationTime > this.ANTICIPATION_DURATION) {
+      // Anticipation complete, allow jump
+      this.isAnticipatingJump = false;
     }
 
 
@@ -1343,17 +1384,21 @@ export class GameScene extends Phaser.Scene {
       this.player.setRotation(0);
     }
 
-    // REMOVED: Old velocity-based jump stretch - now using launch timing above
+    // Smooth interpolation to target scales
+    const dt = this.game.loop.delta / 1000; // Delta time in seconds
+    const currentScaleY = this.player.scaleY;
+    const currentScaleX = this.player.scaleX;
     
-    // FORCE normal scale when grounded and not doing special animations
-    if (this.isGrounded && !this.isDashing && !this.landingSquashTween?.isPlaying() && !this.isJumpLaunching) {
-      this.player.setScale(1, 1);
-    }
+    // Lerp to target scales
+    this.player.setScale(
+      currentScaleX + (this.targetScaleX - currentScaleX) * this.STRETCH_SPEED * dt,
+      currentScaleY + (this.targetScaleY - currentScaleY) * this.STRETCH_SPEED * dt
+    )
     
     // Update direction indicator
     if (this.directionIndicator) {
-      // Position above player
-      this.directionIndicator.setPosition(this.player.x, this.player.y - 35);
+      // Position above player (adjusted for bottom-center origin)
+      this.directionIndicator.setPosition(this.player.x, this.player.y - 60);
       
       // Point in movement direction or fade if stationary
       if (Math.abs(velocityX) > 10) {
@@ -1384,21 +1429,5 @@ export class GameScene extends Phaser.Scene {
     }
   }
   
-  createLandingSquash() {
-    // Stop any existing landing animation
-    if (this.landingSquashTween) {
-      this.landingSquashTween.stop();
-    }
-    
-    // More subtle squash effect
-    this.player.setScale(1.15, 0.85);
-    
-    this.landingSquashTween = this.tweens.add({
-      targets: this.player,
-      scaleX: 1,
-      scaleY: 1,
-      duration: 200,
-      ease: 'Back.out'
-    });
-  }
+
 }
