@@ -6,9 +6,9 @@
 export const COLORS = {
   // Background and atmospheric colors
   BACKGROUND: {
-    MAIN: 0x0A0A0A,           // Deep black background
-    SECONDARY: 0x1A1A1A,      // Atmospheric patterns
-    VIGNETTE: 0x000000,       // Pure black for edges
+    MAIN: 0x242038,           // Deep, moody purple (from Thomas Was Alone)
+    SECONDARY: 0x3d3a50,      // Atmospheric patterns (adjusted for purple)
+    VIGNETTE: 0x1a1828,       // Darker purple for edges
     FOG: 0x1E1E1E,            // Ambient fog (not used yet)
   },
 

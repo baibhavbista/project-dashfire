@@ -24,60 +24,53 @@ export const MAIN_PLATFORM: Platform = {
   x: ARENA_WIDTH / 2,
   y: 1450, // Near bottom of 1536 height arena
   width: ARENA_WIDTH,
-  height: 120 // Slightly thicker floor
+  height: 80 // Reduced thickness
 };
 
-// Block-style platforms spread across full vertical space (2x height)
+// Denser, more connected level design with thinner platforms
 export const ELEVATED_PLATFORMS: Platform[] = [
-  // Bottom tier blocks (just above ground level)
-  { x: 200, y: 1250, width: 150, height: 80 },
-  { x: 500, y: 1300, width: 180, height: 64 },
-  { x: 800, y: 1200, width: 200, height: 96 },
-  { x: 1200, y: 1280, width: 160, height: 72 },
-  { x: 1600, y: 1220, width: 180, height: 88 },
-  { x: 2000, y: 1300, width: 150, height: 64 },
-  { x: 2400, y: 1240, width: 200, height: 80 },
+  // --- Ground Structures (Thinner and more intricate) ---
+  { x: 300, y: 1370, width: 80, height: 160 },  // Left wall
+  { x: 500, y: 1300, width: 350, height: 40 },  // Left "U" base
+  { x: 700, y: 1370, width: 80, height: 160 },   // Right wall of "U"
+  { x: 950, y: 1250, width: 200, height: 30 },  // Step-up platform
+
+  { x: 2700, y: 1370, width: 80, height: 160 }, // Right wall
+  { x: 2500, y: 1300, width: 350, height: 40 }, // Right "L" base
+  { x: 2250, y: 1390, width: 60, height: 120 },  // Lower step of "L"
+  { x: 2050, y: 1250, width: 200, height: 30 }, // Step-up platform
+
+  // --- Dense Floating Platforms ---
+  // Central combat super-structure
+  { x: 1500, y: 950, width: 800, height: 40 }, // Main central bridge
+  { x: 1200, y: 910, width: 40, height: 120 },  // Left cover on bridge
+  { x: 1800, y: 910, width: 40, height: 120 },  // Right cover on bridge
+  { x: 1500, y: 1100, width: 500, height: 30 }, // Lower central platform
+
+  // Mid-tier side platforms (more frequent)
+  { x: 450, y: 750, width: 400, height: 30 },
+  { x: 2550, y: 750, width: 400, height: 30 },
+  { x: 800, y: 1000, width: 150, height: 25 },
+  { x: 2200, y: 1000, width: 150, height: 25 },
   
-  // Mid-low tier blocks
-  { x: 150, y: 1000, width: 120, height: 96 },
-  { x: 450, y: 1050, width: 160, height: 80 },
-  { x: 750, y: 950, width: 140, height: 112 },
-  { x: 1100, y: 1020, width: 180, height: 88 },
-  { x: 1450, y: 980, width: 150, height: 104 },
-  { x: 1850, y: 1080, width: 170, height: 72 },
-  { x: 2250, y: 1000, width: 160, height: 96 },
-  
-  // Middle tier blocks
-  { x: 300, y: 750, width: 140, height: 88 },
-  { x: 650, y: 800, width: 160, height: 96 },
-  { x: 950, y: 700, width: 180, height: 80 },
-  { x: 1300, y: 780, width: 150, height: 104 },
-  { x: 1700, y: 720, width: 170, height: 88 },
-  { x: 2100, y: 800, width: 140, height: 96 },
-  
-  // Mid-high tier blocks
-  { x: 100, y: 500, width: 130, height: 80 },
-  { x: 400, y: 550, width: 150, height: 96 },
-  { x: 700, y: 450, width: 160, height: 88 },
-  { x: 1000, y: 520, width: 140, height: 104 },
-  { x: 1400, y: 480, width: 180, height: 80 },
-  { x: 1800, y: 560, width: 150, height: 96 },
-  { x: 2200, y: 500, width: 160, height: 88 },
-  
-  // High tier blocks
-  { x: 250, y: 250, width: 120, height: 96 },
-  { x: 550, y: 300, width: 140, height: 88 },
-  { x: 850, y: 200, width: 160, height: 104 },
-  { x: 1150, y: 280, width: 150, height: 80 },
-  { x: 1550, y: 220, width: 170, height: 96 },
-  { x: 1950, y: 320, width: 140, height: 88 },
-  
-  // Top tier blocks (highest level)
-  { x: 400, y: 100, width: 140, height: 80 },
-  { x: 800, y: 50, width: 160, height: 96 },
-  { x: 1200, y: 80, width: 150, height: 88 },
-  { x: 1600, y: 120, width: 180, height: 80 },
-  { x: 2000, y: 60, width: 140, height: 96 }
+  // Smaller connecting "dots" and steps
+  { x: 100, y: 1150, width: 100, height: 25 },
+  { x: 2900, y: 1150, width: 100, height: 25 },
+  { x: 600, y: 880, width: 100, height: 25 },
+  { x: 2400, y: 880, width: 100, height: 25 },
+  { x: 1200, y: 650, width: 150, height: 30 },
+  { x: 1800, y: 650, width: 150, height: 30 },
+
+  // --- High-Tier Perches & Cover (thinner and more connected) ---
+  { x: 200, y: 550, width: 40, height: 250 },   // Tall side cover
+  { x: 2800, y: 550, width: 40, height: 250 },  // Tall side cover
+  { x: 500, y: 400, width: 250, height: 30 },
+  { x: 2500, y: 400, width: 250, height: 30 },
+
+  // Top-most platforms
+  { x: 800, y: 250, width: 200, height: 30 },
+  { x: 2200, y: 250, width: 200, height: 30 },
+  { x: 1500, y: 150, width: 400, height: 40 }, // Top central arena
 ];
 
 // All platforms combined

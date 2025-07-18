@@ -126,7 +126,7 @@ export class AnimationSystem {
   // }
   
   /**
-   * Create a landing squash effect
+   * Create landing impact squash animation
    */
   public createLandingSquash(sprite: Phaser.GameObjects.Sprite, state: AnimationState): void {
     // Stop any existing landing animation
@@ -134,17 +134,19 @@ export class AnimationSystem {
       state.landingSquashTween.stop();
     }
     
-    // More subtle squash (was 1.3, 0.7)
-    sprite.setScale(1.15, 0.9);
+    const { LANDING_SQUASH_SCALE, LANDING_BOUNCE_DURATION } = GAME_CONFIG.ANIMATION.JUMP;
+    
+    // Apply landing squash
+    sprite.setScale(LANDING_SQUASH_SCALE.x, LANDING_SQUASH_SCALE.y);
     state.isLanding = true;
     
-    // Bounce back with gentle overshoot
+    // Bounce back with overshoot
     state.landingSquashTween = this.scene.tweens.add({
       targets: sprite,
       scaleX: 1,
       scaleY: 1,
-      duration: GAME_CONFIG.ANIMATION.JUMP.LANDING_DURATION,
-      ease: 'Cubic.easeOut',  // Changed from Back.easeOut for subtler effect
+      duration: LANDING_BOUNCE_DURATION,
+      ease: 'Cubic.easeOut',  // Changed to Cubic for smoother, less bouncy landing
       onComplete: () => {
         state.landingSquashTween = undefined;
         state.isLanding = false;
@@ -171,7 +173,8 @@ export class AnimationSystem {
     // Create new trail
     const trail = this.scene.add.sprite(sprite.x, sprite.y, textureKey);
     trail.setDisplaySize(GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
-    trail.setAlpha(0.6);
+    trail.setBlendMode(Phaser.BlendModes.ADD); // Make the trail glow
+    trail.setAlpha(0.5); // Lower alpha for additive blending
     trail.setFlipX(sprite.flipX);
     trail.setOrigin(0.5, 1);
 
@@ -231,6 +234,55 @@ export class AnimationSystem {
     // (Previously applied enhanced lean for remote players)
   }
   
+  /**
+   * Creates a jump anticipation squash, then launches the player.
+   * This creates a much punchier, deliberate jump animation.
+   * @param sprite The player sprite to animate.
+   * @param body The physics body to apply jump velocity to.
+   * @param state The animation state object.
+   * @param onJumpCallback A function to call when the jump actually happens.
+   */
+  public createAnticipatedJump(
+    sprite: Phaser.GameObjects.Sprite,
+    body: Phaser.Physics.Arcade.Body,
+    state: AnimationState,
+    onJumpCallback: () => void
+  ): void {
+    // Don't allow a new jump while one is already in progress (removed landing check)
+    if (state.isJumping) {
+      return;
+    }
+
+    // Stop any other animations like breathing
+    if (state.breathingTween) {
+      state.breathingTween.stop();
+      state.isBreathing = false;
+    }
+    state.isJumping = true;
+
+    const { ANTICIPATION_SQUASH_SCALE, ANTICIPATION_DURATION, STRETCH_SCALE } = GAME_CONFIG.ANIMATION.JUMP;
+
+    // 1. SQUASH DOWN (Anticipation)
+    this.scene.tweens.add({
+      targets: sprite,
+      scaleX: ANTICIPATION_SQUASH_SCALE.x,
+      scaleY: ANTICIPATION_SQUASH_SCALE.y,
+      duration: ANTICIPATION_DURATION,
+      ease: 'Cubic.easeIn',
+      onComplete: () => {
+        // 2. JUMP & STRETCH (Explosion)
+        // Apply physics immediately
+        body.setVelocityY(-GAME_CONFIG.PLAYER.JUMP_POWER);
+        onJumpCallback(); // Play sounds, create effects
+
+        // Instantly snap to the stretched state
+        sprite.setScale(STRETCH_SCALE.x, STRETCH_SCALE.y);
+        state.targetScaleX = STRETCH_SCALE.x;
+        state.targetScaleY = STRETCH_SCALE.y;
+      }
+    });
+  }
+  
   // Private helper methods
   
   private updateBreathingAnimation(
@@ -272,44 +324,53 @@ export class AnimationSystem {
     isDashing: boolean,
     delta: number
   ): void {
-    // Skip if landing animation is playing or dashing
-    if (state.isLanding || isDashing) return;
+    // If we are in the middle of a landing or jump anticipation, let the tweens handle it
+    if (state.isLanding || (state.isJumping && isGrounded)) return;
+    
+    // Skip if dashing
+    if (isDashing) return;
     
     if (!isGrounded) {
-      if (velocityY < 0) {
-        // Rising - stretch vertically
-        const t = Math.min(-velocityY / 800, 1);
-        const stretchY = 1 + (GAME_CONFIG.ANIMATION.JUMP.MAX_STRETCH - 1) * t;
-        state.targetScaleY = stretchY;
-        state.targetScaleX = 1 / stretchY;
-        state.isJumping = true;
-        state.isFalling = false;
-      } else {
-        // Falling - compress vertically
-        const t = Math.min(velocityY / 400, 1);
-        const compressY = 1 + (GAME_CONFIG.ANIMATION.JUMP.MAX_STRETCH - 1) * (1 - t);
-        state.targetScaleY = compressY;
-        state.targetScaleX = 1 / compressY;
+      // If the player is moving downwards (after the jump's peak), return to a neutral scale.
+      // This makes the stretch only apply on the way up.
+      if (velocityY > 50 && state.isJumping) {
+        this.scene.tweens.add({
+          targets: sprite,
+          scaleX: 1,
+          scaleY: 1,
+          duration: 50, // A quick transition back to normal
+          ease: 'Cubic.easeOut'
+        });
+        // We are now just "falling", not actively "jumping"
         state.isJumping = false;
         state.isFalling = true;
+        state.targetScaleX = 1;
+        state.targetScaleY = 1;
+      } else if (velocityY > 0 && !state.isJumping) {
+        // Already falling without jumping - slight compression
+        const t = Math.min(velocityY / 400, 1);
+        const compressY = 1 - (0.1 * t); // Subtle compression when falling
+        state.targetScaleY = compressY;
+        state.targetScaleX = 2 - compressY; // Inverse relationship
+        state.isFalling = true;
+        
+        // Apply smooth scaling for fall compression
+        const dt = delta / 1000;
+        const currentScaleX = sprite.scaleX;
+        const currentScaleY = sprite.scaleY;
+        
+        sprite.setScale(
+          currentScaleX + (state.targetScaleX - currentScaleX) * GAME_CONFIG.ANIMATION.JUMP.STRETCH_SPEED * dt,
+          currentScaleY + (state.targetScaleY - currentScaleY) * GAME_CONFIG.ANIMATION.JUMP.STRETCH_SPEED * dt
+        );
       }
     } else {
-      // Return to normal when grounded
-      state.targetScaleX = 1;
-      state.targetScaleY = 1;
+      // Reset state flags when on the ground
       state.isJumping = false;
       state.isFalling = false;
+      state.targetScaleX = 1;
+      state.targetScaleY = 1;
     }
-    
-    // Apply smooth scaling
-    const dt = delta / 1000;
-    const currentScaleX = sprite.scaleX;
-    const currentScaleY = sprite.scaleY;
-    
-    sprite.setScale(
-      currentScaleX + (state.targetScaleX - currentScaleX) * GAME_CONFIG.ANIMATION.JUMP.STRETCH_SPEED * dt,
-      currentScaleY + (state.targetScaleY - currentScaleY) * GAME_CONFIG.ANIMATION.JUMP.STRETCH_SPEED * dt
-    );
   }
   
   private updateDashTrails(state: AnimationState): void {

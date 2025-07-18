@@ -108,12 +108,22 @@ export class MultiplayerCoordinator {
       console.log(`Joined team ${data.team} with player ID ${data.playerId}!`);
       console.log(`Connected to room ${data.roomId}`);
       
+      // Update the UI with the correct team
+      this.updateTeamUI(data.team);
+      
       // Process any players that were added before we got our ID
       this.networkManager?.emit("process-pending-players");
     });
     
     // Player added to game
     this.networkManager.on("player-added", (player: PlayerData) => {
+      // Store the player data if we don't have our ID yet
+      if (!this.localPlayerId) {
+        console.log(`Received player ${player.id} before getting local ID, might be us`);
+        // Don't create any players until we know who we are
+        return;
+      }
+      
       // Skip if it's the local player or already exists
       if (player.id === this.localPlayerId || this.remotePlayers.has(player.id)) {
         console.log(`Skipping player ${player.id} - is local: ${player.id === this.localPlayerId}, already exists: ${this.remotePlayers.has(player.id)}`);
@@ -173,11 +183,16 @@ export class MultiplayerCoordinator {
     
     // Bullet fired by other player
     this.networkManager.on("bullet-added", (bullet: BulletData) => {
-      console.log("bullet-added", bullet);
       // Only render bullets from other players
       if (bullet.ownerId !== this.localPlayerId) {
-        // Create visual bullet with team color
-        const bulletColor = bullet.ownerTeam === "blue" ? COLORS.TEAMS.BLUE.GLOW : COLORS.TEAMS.RED.GLOW;
+        // Find the owner of the bullet to get their team color
+        const owner = this.remotePlayers.get(bullet.ownerId);
+        
+        // Default to red if owner not found (should not happen)
+        const teamColor = owner ? owner.team : 'red';
+        const bulletColor = teamColor === "blue" ? COLORS.TEAMS.BLUE.GLOW : COLORS.TEAMS.RED.GLOW;
+
+        // Create visual bullet with the correct team color
         const bulletSprite = this.scene.add.rectangle(
           bullet.x, 
           bullet.y, 
@@ -380,6 +395,18 @@ export class MultiplayerCoordinator {
         indicator.setVisible(this.showNetworkQuality);
       });
     });
+  }
+
+  /**
+   * Updates the team UI when team is assigned
+   */
+  private updateTeamUI(team: 'red' | 'blue'): void {
+    // Destroy existing UI
+    if (this.gameHUD) {
+      // We need to update the team indicator
+      // For now, recreate the UI with the correct team
+      this.gameHUD.createMultiplayerUI(team, () => this.leaveMultiplayer());
+    }
   }
 
   /**

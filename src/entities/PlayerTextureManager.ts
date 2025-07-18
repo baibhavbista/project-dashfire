@@ -7,9 +7,9 @@ import { getTeamColors } from '../config/Colors';
  * Ensures consistent textures across all player types
  */
 export class PlayerTextureManager {
-  private static readonly GUN_WIDTH = 20;
+  private static readonly GUN_WIDTH = 12;  // Reduced from 20
   private static readonly GUN_HEIGHT = 4;
-  private static readonly GUN_X_OFFSET = GAME_CONFIG.PLAYER.WIDTH - 4;
+  private static readonly GUN_X_OFFSET = GAME_CONFIG.PLAYER.WIDTH - 2;  // Adjusted for smaller gun
   private static readonly GUN_Y_OFFSET = GAME_CONFIG.PLAYER.HEIGHT / 2 - 8;
   
   /**
@@ -49,7 +49,7 @@ export class PlayerTextureManager {
     );
     
     // Generate texture with increased width to accommodate gun
-    const textureWidth = GAME_CONFIG.PLAYER.WIDTH + this.GUN_WIDTH - 4;
+    const textureWidth = GAME_CONFIG.PLAYER.WIDTH + this.GUN_WIDTH - 2;  // Adjusted overlap for smaller gun
     graphics.generateTexture(textureKey, textureWidth, GAME_CONFIG.PLAYER.HEIGHT);
     graphics.destroy();
     
@@ -60,7 +60,7 @@ export class PlayerTextureManager {
    * Get the total width of the player texture (including gun)
    */
   static getTextureWidth(): number {
-    return GAME_CONFIG.PLAYER.WIDTH + this.GUN_WIDTH - 4;
+    return GAME_CONFIG.PLAYER.WIDTH + this.GUN_WIDTH - 2;  // Adjusted overlap for smaller gun
   }
   
   /**

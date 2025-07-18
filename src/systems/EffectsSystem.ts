@@ -52,61 +52,46 @@ export class EffectsSystem {
    * Create hit effect when player takes damage
    */
   public createHitEffect(x: number, y: number): void {
-    // Create a burst of red particles for hit effect
-    const particleCount = 5;
-    
-    for (let i = 0; i < particleCount; i++) {
-      const particle = this.scene.add.circle(x, y, 3, COLORS.EFFECTS.HIT);
-      
-      // Random direction
-      const angle = (Math.PI * 2 * i) / particleCount + Math.random() * 0.5;
-      const speed = 100 + Math.random() * 100;
-      
-      // Animate particle
-      this.scene.tweens.add({
-        targets: particle,
-        x: x + Math.cos(angle) * speed,
-        y: y + Math.sin(angle) * speed,
-        alpha: 0,
-        scale: 0.5,
-        duration: 500,
-        ease: 'Power2',
-        onComplete: () => particle.destroy()
-      });
-    }
+    // Use a particle emitter for more control
+    const particles = this.scene.add.particles(x, y, 'white-rect', {
+      blendMode: Phaser.BlendModes.ADD,
+      scale: { start: 0.5, end: 0 },
+      speed: { min: 80, max: 150 },
+      lifespan: 400,
+      quantity: 8,
+      tint: COLORS.EFFECTS.HIT,
+      alpha: { start: 0.8, end: 0 },
+    });
+
+    // Emitter self-destructs after particles are gone
+    this.scene.time.delayedCall(1000, () => particles.destroy());
     
     // Flash the screen slightly
     this.scene.cameras.main.flash(100, 255, 0, 0, false);
+    // Add a very subtle shake for a hit
+    this.scene.cameras.main.shake(100, 0.005);
   }
   
   /**
    * Create death effect with team-colored particles
    */
   public createDeathEffect(x: number, y: number, team: 'red' | 'blue'): void {
-    // Create a burst of team-colored particles
     const teamColors = getTeamColors(team);
     const teamColor = teamColors.GLOW;
-    const particleCount = 15;
-    
-    for (let i = 0; i < particleCount; i++) {
-      const particle = this.scene.add.circle(x, y, 4, teamColor);
-      
-      // Random direction
-      const angle = (Math.PI * 2 * i) / particleCount + Math.random() * 0.3;
-      const speed = 150 + Math.random() * 150;
-      
-      // Animate particle
-      this.scene.tweens.add({
-        targets: particle,
-        x: x + Math.cos(angle) * speed,
-        y: y + Math.sin(angle) * speed,
-        alpha: 0,
-        scale: 0.2,
-        duration: 800,
-        ease: 'Power3',
-        onComplete: () => particle.destroy()
-      });
-    }
+
+    // Create a particle emitter for the death burst
+    const particles = this.scene.add.particles(x, y, 'white-rect', {
+      blendMode: Phaser.BlendModes.ADD,
+      scale: { start: 0.7, end: 0 },
+      speed: { min: 100, max: 250 },
+      lifespan: 800,
+      quantity: 20,
+      tint: teamColor,
+      alpha: { start: 0.9, end: 0 },
+    });
+
+    // Emitter self-destructs
+    this.scene.time.delayedCall(1500, () => particles.destroy());
     
     // Create expanding ring effect
     const ring = this.scene.add.circle(x, y, 10, teamColor, 0);
@@ -120,6 +105,9 @@ export class EffectsSystem {
       ease: 'Power2',
       onComplete: () => ring.destroy()
     });
+
+    // Add a more noticeable shake for a death
+    this.scene.cameras.main.shake(250, 0.01);
   }
   
   /**
@@ -127,27 +115,17 @@ export class EffectsSystem {
    */
   public createBulletImpactEffect(x: number, y: number): void {
     // Create small particle burst for bullet impact
-    const particleCount = 3;
-    
-    for (let i = 0; i < particleCount; i++) {
-      const particle = this.scene.add.circle(x, y, 2, COLORS.EFFECTS.BULLET_IMPACT);
-      
-      // Random direction
-      const angle = (Math.PI * 2 * i) / particleCount + Math.random() * 0.5;
-      const speed = 50 + Math.random() * 50;
-      
-      // Animate particle
-      this.scene.tweens.add({
-        targets: particle,
-        x: x + Math.cos(angle) * speed,
-        y: y + Math.sin(angle) * speed,
-        alpha: 0,
-        scale: 0.5,
-        duration: 300,
-        ease: 'Power2',
-        onComplete: () => particle.destroy()
-      });
-    }
+    const particles = this.scene.add.particles(x, y, 'white-rect', {
+      scale: { start: 0.4, end: 0 },
+      speed: { min: 40, max: 80 },
+      lifespan: 300,
+      quantity: 5,
+      tint: COLORS.EFFECTS.BULLET_IMPACT,
+      alpha: { start: 0.7, end: 0 },
+    });
+
+    // Emitter self-destructs
+    this.scene.time.delayedCall(1000, () => particles.destroy());
   }
   
   /**

@@ -45,6 +45,20 @@ export class AnimationController {
   }
   
   /**
+   * Get the animation system instance
+   */
+  public getAnimationSystem(): AnimationSystem {
+    return this.animationSystem;
+  }
+  
+  /**
+   * Get the current animation state
+   */
+  public getState(): AnimationState {
+    return this.animationState;
+  }
+  
+  /**
    * Update animations based on current physics state
    */
   public update(
@@ -127,13 +141,6 @@ export class AnimationController {
   public forceLandingAnimation(): void {
     this.animationSystem.createLandingSquash(this.sprite, this.animationState);
     this.events.onLandingSquash?.();
-  }
-  
-  /**
-   * Get current animation state
-   */
-  public getState(): AnimationState {
-    return this.animationState;
   }
   
   /**

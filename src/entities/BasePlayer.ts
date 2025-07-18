@@ -2,6 +2,7 @@ import Phaser from 'phaser';
 import { GAME_CONFIG, Team } from '../config/GameConfig';
 import { AnimationController } from '../systems/AnimationController';
 import { PlayerTextureManager } from './PlayerTextureManager';
+import { getTeamColors } from '../config/Colors';
 
 /**
  * Base player class containing shared functionality for both local and remote players
@@ -19,6 +20,7 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
   protected nameText?: Phaser.GameObjects.Text;
   protected healthBarBg?: Phaser.GameObjects.Rectangle;
   protected healthBar?: Phaser.GameObjects.Rectangle;
+  protected playerLight?: Phaser.GameObjects.Light;
   
   // Animation controller
   protected animationController: AnimationController;
@@ -34,6 +36,9 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
   // Health
   protected currentHealth: number = GAME_CONFIG.PLAYER.HEALTH.MAX;
   protected isDead: boolean = false;
+  
+  // Dynamic origin for animations
+  protected baseOriginX: number = 0.5;
   
   constructor(
     scene: Phaser.Scene, 
@@ -60,16 +65,27 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
     // Ensure sprite is visible
     this.setVisible(true);
     
-    // Configure sprite
-    this.setOrigin(0.5, 1); // Bottom-center origin for proper animations
+    // Calculate origin for player body center (not texture center)
+    // The texture is wider than the player body due to the gun
+    const textureWidth = PlayerTextureManager.getTextureWidth();
+    const playerBodyCenter = GAME_CONFIG.PLAYER.WIDTH / 2;
+    this.baseOriginX = playerBodyCenter / textureWidth; // Store base origin for dynamic adjustment
+    
+    // Set initial origin (will be adjusted dynamically based on flip)
+    this.setOrigin(this.baseOriginX, 1);
     this.setBounce(GAME_CONFIG.PLAYER.BOUNCE);
     
     // Configure physics body - keep original size, gun is just visual
     const body = this.body as Phaser.Physics.Arcade.Body;
     body.setSize(GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
-    body.setOffset(0, 0); // Body stays aligned with player rectangle, not gun
+    
+    // Calculate initial body offset (when facing right)
+    // The body should be aligned with the player rectangle, not the full texture
+    const bodyOffsetX = 0; // Body starts at left edge of texture (where player rectangle starts)
+    body.setOffset(bodyOffsetX, 0);
     
     // Create visual components
+    this.createPlayerLight();
     // this.createDirectionIndicator(); // Removed direction indicator
     this.createNameText();
     if (!isLocal) {
@@ -88,6 +104,20 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
     );
   }
   
+  /**
+   * Creates a light source that follows the player
+   */
+  protected createPlayerLight(): void {
+    const teamColors = getTeamColors(this.team);
+    this.playerLight = this.scene.lights.addLight(
+      this.x, 
+      this.y, 
+      250,          // Radius
+      teamColors.GLOW, // Color
+      1.8           // Intensity
+    );
+  }
+
   /**
    * Create direction indicator triangle above player
    * REMOVED - No longer used
@@ -154,6 +184,42 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
   }
   
   /**
+   * Override setFlipX to dynamically adjust origin
+   */
+  setFlipX(value: boolean): this {
+    super.setFlipX(value);
+    this.updateDynamicOrigin();
+    return this;
+  }
+  
+  /**
+   * Update origin based on flip direction to keep animations centered on player body
+   */
+  protected updateDynamicOrigin(): void {
+    const textureWidth = PlayerTextureManager.getTextureWidth();
+    const gunWidth = textureWidth - GAME_CONFIG.PLAYER.WIDTH;
+    const body = this.body as Phaser.Physics.Arcade.Body;
+    
+    if (this.flipX) {
+      // When flipped (facing left), gun is on the left side
+      // So we need to shift origin right to compensate
+      const originX = this.baseOriginX + (gunWidth / textureWidth);
+      this.setOrigin(originX, 1);
+      
+      // Also adjust physics body offset when flipped
+      // The body needs to stay aligned with the player rectangle
+      body.setOffset(gunWidth, 0);
+    } else {
+      // When not flipped (facing right), gun is on the right side
+      // Use base origin which already accounts for this
+      this.setOrigin(this.baseOriginX, 1);
+      
+      // Reset body offset to default
+      body.setOffset(0, 0);
+    }
+  }
+  
+  /**
    * Update UI element positions
    */
   protected updateUIPositions(): void {
@@ -164,6 +230,10 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
     if (this.healthBarBg && this.healthBar) {
       this.healthBarBg.setPosition(this.x, this.y - 65);
       this.healthBar.setPosition(this.x - 20, this.y - 65);
+    }
+
+    if (this.playerLight) {
+      this.playerLight.setPosition(this.x, this.y - 20); // Position light slightly above feet
     }
   }
   
@@ -204,6 +274,10 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
     if (this.healthBarBg && this.healthBar) {
       this.healthBarBg.setVisible(!dead);
       this.healthBar.setVisible(!dead);
+    }
+    
+    if (this.playerLight) {
+      this.playerLight.setVisible(!dead);
     }
   }
   
@@ -276,6 +350,11 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
     
     if (this.healthBar) {
       this.healthBar.destroy();
+    }
+
+    if (this.playerLight) {
+      this.scene.lights.removeLight(this.playerLight);
+      this.playerLight = undefined;
     }
     
     super.destroy(fromScene);

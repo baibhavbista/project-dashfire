@@ -8,7 +8,7 @@ export const GAME_CONFIG = {
   PLAYER: {
     // Dimensions
     WIDTH: 32,
-    HEIGHT: 48,
+    HEIGHT: 64,  // Increased from 48
     
     // Movement speeds
     MAX_SPEED: 300,
@@ -16,8 +16,8 @@ export const GAME_CONFIG = {
     FRICTION: 2000,
     
     // Jump mechanics
-    JUMP_POWER: 850,            // ~3x character height jump (144px for 48px tall character)
-    COYOTE_TIME_MS: 100,        // Grace period for jumping after leaving platform
+    JUMP_POWER: 1000,            // Jump height tuned for 64px tall character
+    COYOTE_TIME_MS: 80,        // Grace period for jumping after leaving platform
     
     // Dash mechanics
     DASH: {
@@ -66,10 +66,21 @@ export const GAME_CONFIG = {
     
     // Jump animations
     JUMP: {
-      MAX_STRETCH: 1.20,
+      // Anticipation (pre-jump squash)
+      ANTICIPATION_SQUASH_SCALE: { x: 1.2, y: 0.8 }, // How much to squash before jumping
+      ANTICIPATION_DURATION: 80,                      // How long the squash lasts (in ms)
+      
+      // Jump stretch (explosive upward motion)
+      STRETCH_SCALE: { x: 0.8, y: 1.5 },              // Fixed scale when stretched during jump
+      
+      // Landing
+      LANDING_SQUASH_SCALE: { x: 1.1, y: 0.9 },       // How much to squash on landing (reduced from 1.25, 0.75)
+      LANDING_BOUNCE_DURATION: 50,                     // How long to return to normal after landing (reduced from 150)
+      
+      // Legacy values (kept for compatibility)
+      MAX_STRETCH: 1.50,
       MAX_SQUASH: 0.85,
       ANTICIPATION_SQUASH: 0.95,
-      ANTICIPATION_DURATION: 50,
       STRETCH_SPEED: 15,
       LANDING_DURATION: 100,
     },

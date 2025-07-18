@@ -29,6 +29,7 @@ export class WorldBuilder {
   buildWorld(): Phaser.Physics.Arcade.StaticGroup {
     this.createPlatforms();
     this.createAtmosphericBackground();
+    this.createZoneLighting(); // Add the new lighting
     this.setupWorldBounds();
     
     return this.platforms;
@@ -38,16 +39,18 @@ export class WorldBuilder {
    * Creates all platforms in the world
    */
   private createPlatforms(): void {
-    // Main arena floor using shared geometry - dark gray platform
+    // Main arena floor using shared geometry - now solid black
     const mainPlatform = this.scene.add.rectangle(
       MAIN_PLATFORM.x, 
       MAIN_PLATFORM.y, 
       MAIN_PLATFORM.width, 
       MAIN_PLATFORM.height, 
-      COLORS.PLATFORMS.MAIN
+      0x000000 // Solid black
     );
-    mainPlatform.setStrokeStyle(1, COLORS.PLATFORMS.EDGE); // Subtle edge highlight
     this.platforms.add(mainPlatform);
+
+    // Set all platforms to use the lighting pipeline
+    mainPlatform.setPipeline('Light2D');
 
     // Create elevated platforms for jumping
     this.createElevatedPlatforms();
@@ -57,18 +60,26 @@ export class WorldBuilder {
    * Creates the elevated platforms using shared geometry
    */
   private createElevatedPlatforms(): void {
-    // Use shared platform definitions with dark gray color scheme
+    // Use shared platform definitions with solid black color
     ELEVATED_PLATFORMS.forEach(platform => {
       const rect = this.scene.add.rectangle(
         platform.x, 
         platform.y, 
         platform.width, 
         platform.height, 
-        COLORS.PLATFORMS.ELEVATED
+        0x000000 // Solid black
       );
-      rect.setStrokeStyle(1, COLORS.PLATFORMS.EDGE); // Subtle edge highlight
+      rect.setPipeline('Light2D');
       this.platforms.add(rect);
     });
+  }
+
+  /**
+   * Creates colored zone lighting to match the reference image
+   */
+  private createZoneLighting(): void {
+    // A single, bright, off-screen "sun" to cast long shadows
+    this.scene.lights.addLight(ARENA_WIDTH / 2, -500, 1500, 0xffffff, 3.0);
   }
 
   /**

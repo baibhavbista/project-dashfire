@@ -13,6 +13,7 @@ import { EffectsSystem } from './systems/EffectsSystem';
 import { WorldBuilder } from './systems/WorldBuilder';
 import { MultiplayerCoordinator } from './systems/MultiplayerCoordinator';
 import { PlayerFactory } from './factories/PlayerFactory';
+import { DebugVisualization } from './systems/DebugVisualization';
 
 // Team colors now imported from config/Colors.ts
 
@@ -31,6 +32,7 @@ export class GameScene extends Phaser.Scene {
   // UI managers
   private gameHUD!: GameHUD;
   private killFeed!: KillFeed;
+  private debugVisualization!: DebugVisualization;
 
   // Game state
   private currentHealth: number = GAME_CONFIG.PLAYER.HEALTH.MAX;
@@ -103,6 +105,10 @@ export class GameScene extends Phaser.Scene {
     // Setup camera to follow player
     this.worldBuilder.setupCamera(this.player);
 
+    // Enable 2D lighting system for shadows
+    this.lights.enable();
+    this.lights.setAmbientColor(0x1a1828); // Very dark ambient light for mood
+
     // Initialize weapon system
     this.weaponSystem = new WeaponSystem(this, this.player);
     
@@ -116,6 +122,9 @@ export class GameScene extends Phaser.Scene {
     // Initialize UI managers
     this.gameHUD = new GameHUD(this);
     this.killFeed = new KillFeed(this);
+    
+    // Initialize debug visualization
+    this.debugVisualization = new DebugVisualization(this);
     
     // Set up bullet-platform collision detection (visual effects only in multiplayer)
     const bullets = this.weaponSystem.getBulletPool().getBullets();
@@ -238,6 +247,17 @@ export class GameScene extends Phaser.Scene {
       this.multiplayerCoordinator.update(delta);
     }
     
+    // Update debug visualization
+    this.debugVisualization.clear();
+    this.debugVisualization.updatePlayer(this.player);
+    
+    // Update debug visualization for remote players
+    this.remotePlayers.forEach(remotePlayer => {
+      this.debugVisualization.updatePlayer(remotePlayer);
+    });
+    
+    this.debugVisualization.drawLegend();
+    
     // Update debug text
     if (this.gameHUD.isDebugVisible()) {
       const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
@@ -269,6 +289,7 @@ export class GameScene extends Phaser.Scene {
     this.effectsSystem.destroy();
     this.gameHUD.destroy();
     this.killFeed.destroy();
+    this.debugVisualization.destroy();
   }
 
   /**

@@ -288,14 +288,14 @@ export class MovementSystem {
       return;
     }
     
-    // Check if still holding initial direction
-    const stillHolding = 
-      (dashState.initialDirections.left && input.left) ||
-      (dashState.initialDirections.right && input.right) ||
-      (dashState.initialDirections.up && input.up) ||
-      (dashState.initialDirections.down && input.down);
+    // Check if pressing opposite direction
+    const oppositePressed = 
+      (dashState.initialDirections.left && input.right) ||
+      (dashState.initialDirections.right && input.left) ||
+      (dashState.initialDirections.up && input.down) ||
+      (dashState.initialDirections.down && input.up);
     
-    if (!stillHolding) {
+    if (oppositePressed) {
       this.endDash(body, state, dashState);
     }
   }

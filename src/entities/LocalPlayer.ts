@@ -99,6 +99,26 @@ export class LocalPlayer extends BasePlayer {
       dash: this.dashKey.isDown
     };
     
+    // Handle jump with anticipation animation
+    const canJump = this.movementState.isGrounded || this.movementState.coyoteTime > 0;
+    
+    if (input.jump && !this.movementState.wasJumpPressed && canJump) {
+      // Trigger the new animation, which handles the physics itself
+      this.animationController.getAnimationSystem().createAnticipatedJump(
+        this, 
+        body, 
+        this.animationController.getState(), 
+        () => {
+          this.events.emit('jump');
+        }
+      );
+      
+      // Prevent the MovementSystem from processing the jump
+      this.movementState.coyoteTime = 0;
+      this.movementState.isJumping = true;
+      this.movementState.wasJumpPressed = true; // Prevent double-jumping
+    }
+    
     // Update movement through system
     this.movementSystem.updateMovement(body, input, this.movementState, delta);
     
@@ -112,7 +132,7 @@ export class LocalPlayer extends BasePlayer {
     this.handleShooting();
     
     // Detect state changes for events
-    this.detectStateChanges(input);
+    this.detectStateChanges();
     
     // Update facing direction
     if (this.movementState.facingDirection !== 0) {
@@ -231,11 +251,9 @@ export class LocalPlayer extends BasePlayer {
     }
   }
   
-  private detectStateChanges(input: MovementInput): void {
-    // Jump events - emit when we actually jump (rising edge + grounded)
-    if (input.jump && !this.movementState.wasJumpPressed && this.movementState.isGrounded) {
-      this.events.emit('jump');
-    }
+  private detectStateChanges(): void {
+    // Jump events are now handled in the animation callback
+    // Remove the old jump detection here to avoid double emission
     
     // Landing detection
     if (!this.wasGrounded && this.movementState.isGrounded) {
@@ -268,7 +286,12 @@ export class LocalPlayer extends BasePlayer {
           direction,
           this.team as Team
         );
-        this.events.emit('shoot', bulletData);
+        // Add team to the emitted data
+        this.events.emit('shoot', {
+          ...bulletData,
+          direction,
+          team: this.team
+        });
       }
     }
   }
