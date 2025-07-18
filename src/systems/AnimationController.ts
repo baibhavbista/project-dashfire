@@ -77,17 +77,7 @@ export class AnimationController {
       delta
     );
     
-    // Update direction indicator if present
-    if (this.directionIndicator) {
-      this.animationSystem.updateDirectionIndicator(
-        this.directionIndicator,
-        this.sprite.x,
-        this.sprite.y,
-        velocityX,
-        isDashing,
-        this.animationState
-      );
-    }
+    // Direction indicator removed - no longer updating it
     
     // Track state changes
     this.wasGrounded = isGrounded;

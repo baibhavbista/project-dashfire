@@ -91,38 +91,39 @@ export class AnimationSystem {
   
   /**
    * Update direction indicator position and state
+   * REMOVED - No longer used
    */
-  public updateDirectionIndicator(
-    indicator: Phaser.GameObjects.Triangle,
-    x: number,
-    y: number,
-    velocityX: number,
-    isDashing: boolean,
-    state: AnimationState
-  ): void {
-    indicator.setPosition(x, y - GAME_CONFIG.ANIMATION.INDICATOR.OFFSET_Y);
-    
-    const absVelX = Math.abs(velocityX);
-    
-    if (absVelX > 10) {
-      indicator.setAlpha(GAME_CONFIG.ANIMATION.INDICATOR.ACTIVE_ALPHA);
-      const angle = velocityX > 0 ? 90 : -90;
-      indicator.setRotation(Phaser.Math.DegToRad(angle));
-      state.lastVelocityX = velocityX;
-    } else {
-      indicator.setAlpha(GAME_CONFIG.ANIMATION.INDICATOR.FADE_ALPHA);
-      const angle = state.lastVelocityX > 0 ? 90 : -90;
-      indicator.setRotation(Phaser.Math.DegToRad(angle));
-    }
-    
-    // Glow during dash
-    if (isDashing) {
-      indicator.setAlpha(1);
-      indicator.setScale(GAME_CONFIG.ANIMATION.INDICATOR.DASH_SCALE);
-    } else {
-      indicator.setScale(1);
-    }
-  }
+  // public updateDirectionIndicator(
+  //   indicator: Phaser.GameObjects.Triangle,
+  //   x: number,
+  //   y: number,
+  //   velocityX: number,
+  //   isDashing: boolean,
+  //   state: AnimationState
+  // ): void {
+  //   indicator.setPosition(x, y - GAME_CONFIG.ANIMATION.INDICATOR.OFFSET_Y);
+  //   
+  //   const absVelX = Math.abs(velocityX);
+  //   
+  //   if (absVelX > 10) {
+  //     indicator.setAlpha(GAME_CONFIG.ANIMATION.INDICATOR.ACTIVE_ALPHA);
+  //     const angle = velocityX > 0 ? 90 : -90;
+  //     indicator.setRotation(Phaser.Math.DegToRad(angle));
+  //     state.lastVelocityX = velocityX;
+  //   } else {
+  //     indicator.setAlpha(GAME_CONFIG.ANIMATION.INDICATOR.FADE_ALPHA);
+  //     const angle = state.lastVelocityX > 0 ? 90 : -90;
+  //     indicator.setRotation(Phaser.Math.DegToRad(angle));
+  //   }
+  //   
+  //   // Glow during dash
+  //   if (isDashing) {
+  //     indicator.setAlpha(1);
+  //     indicator.setScale(GAME_CONFIG.ANIMATION.INDICATOR.DASH_SCALE);
+  //   } else {
+  //     indicator.setScale(1);
+  //   }
+  // }
   
   /**
    * Create a landing squash effect

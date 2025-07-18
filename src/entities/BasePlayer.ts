@@ -80,7 +80,7 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
     body.setSize(GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
     
     // Create visual components
-    this.createDirectionIndicator();
+    // this.createDirectionIndicator(); // Removed direction indicator
     this.createNameText();
     if (!isLocal) {
       this.createHealthBar(); // Remote players show health bars above them
@@ -90,7 +90,7 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
     this.animationController = new AnimationController(
       scene,
       this,
-      this.directionIndicator,
+      undefined, // No direction indicator
       {
         onLandingSquash: () => this.onLandingSquash(),
         onDashTrailCreated: () => this.onDashTrailCreated()
@@ -100,19 +100,20 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
   
   /**
    * Create direction indicator triangle above player
+   * REMOVED - No longer used
    */
-  protected createDirectionIndicator(): void {
-    const teamColors = getTeamColors(this.team);
-    this.directionIndicator = this.scene.add.triangle(
-      this.x, 
-      this.y - GAME_CONFIG.ANIMATION.INDICATOR.OFFSET_Y,
-      0, 10,  // top point
-      -8, -8, // bottom left
-      8, -8,  // bottom right
-      teamColors.PRIMARY
-    );
-    this.directionIndicator.setAlpha(GAME_CONFIG.ANIMATION.INDICATOR.FADE_ALPHA);
-  }
+  // protected createDirectionIndicator(): void {
+  //   const teamColors = getTeamColors(this.team);
+  //   this.directionIndicator = this.scene.add.triangle(
+  //     this.x, 
+  //     this.y - GAME_CONFIG.ANIMATION.INDICATOR.OFFSET_Y,
+  //     0, 10,  // top point
+  //     -8, -8, // bottom left
+  //     8, -8,  // bottom right
+  //     teamColors.PRIMARY
+  //   );
+  //   this.directionIndicator.setAlpha(GAME_CONFIG.ANIMATION.INDICATOR.FADE_ALPHA);
+  // }
   
   /**
    * Create name text above player (for remote players)
@@ -204,9 +205,7 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
     this.isDead = dead;
     this.setVisible(!dead);
     
-    if (this.directionIndicator) {
-      this.directionIndicator.setVisible(!dead);
-    }
+    // Removed direction indicator visibility handling
     
     if (this.nameText) {
       this.nameText.setVisible(!dead);
@@ -275,9 +274,7 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
     this.animationController.destroy();
     
     // Clean up UI elements
-    if (this.directionIndicator) {
-      this.directionIndicator.destroy();
-    }
+    // Removed direction indicator cleanup
     
     if (this.nameText) {
       this.nameText.destroy();
