@@ -3,27 +3,18 @@ import { WeaponSystem } from './WeaponSystem';
 import { Bullet } from './BulletPool';
 import { SoundManager } from './SoundManager';
 import { RemotePlayer } from './network/RemotePlayer';
+import { LocalPlayer } from './entities/LocalPlayer';
 import { NetworkManager, PlayerData, BulletData } from './network/NetworkManager';
 import { ARENA_WIDTH, ARENA_HEIGHT, MAIN_PLATFORM, ELEVATED_PLATFORMS } from '../shared/WorldGeometry';
 import { COLORS, getTeamColors } from './config/Colors';
 import { GAME_CONFIG, getSpawnPosition } from './config/GameConfig';
-import { INPUT_CONFIG } from './config/InputConfig';
 
 // Team colors now imported from config/Colors.ts
 
-// Custom interfaces for better type safety
-interface PlayerSprite extends Phaser.Physics.Arcade.Sprite {
-  dustParticles?: Phaser.GameObjects.Particles.ParticleEmitter;
-}
-
 export class GameScene extends Phaser.Scene {
-  private player!: PlayerSprite;
+  private player!: LocalPlayer;
   private platforms!: Phaser.Physics.Arcade.StaticGroup;
-  private cursors!: Phaser.Types.Input.Keyboard.CursorKeys;
-  private jumpKey!: Phaser.Input.Keyboard.Key; // This will be D key
-  private dashKey!: Phaser.Input.Keyboard.Key; // This will be S key
-  private shootKey!: Phaser.Input.Keyboard.Key; // This will be Space key
-  private shootKeyAlt!: Phaser.Input.Keyboard.Key; // This will be A key
+  private dustParticles?: Phaser.GameObjects.Particles.ParticleEmitter;
   private weaponSystem!: WeaponSystem;
   private soundManager!: SoundManager;
   private networkManager?: NetworkManager;
@@ -31,27 +22,6 @@ export class GameScene extends Phaser.Scene {
   private isMultiplayer: boolean = false;
   private localPlayerId?: string;
   private multiplayerUI?: Phaser.GameObjects.Container;
-  private coyoteTime: number = 0;
-  private readonly COYOTE_TIME_MS: number = GAME_CONFIG.PLAYER.COYOTE_TIME_MS;
-  private canDash: boolean = true;
-  private isDashing: boolean = false;
-  private dashCooldown: number = 0;
-  private readonly DASH_COOLDOWN_MS: number = GAME_CONFIG.PLAYER.DASH.COOLDOWN;
-  private dashTrails: Phaser.GameObjects.Sprite[] = [];
-  private readonly MAX_TRAILS: number = GAME_CONFIG.PLAYER.DASH.MAX_TRAILS;
-  
-  // Dash input buffering
-  private dashBuffering: boolean = false;
-  private dashBufferTime: number = 0;
-  private readonly DASH_BUFFER_WINDOW_MS: number = GAME_CONFIG.PLAYER.DASH.BUFFER_WINDOW_MS;
-  
-  // Dash direction tracking
-  private initialDashDirections = {
-    left: false,
-    right: false,
-    up: false,
-    down: false
-  };
 
   // Client-side prediction
   private lastServerPosition: { x: number; y: number } = { x: 0, y: 0 };
@@ -76,22 +46,7 @@ export class GameScene extends Phaser.Scene {
   private redScore: number = 0;
   private blueScore: number = 0;
   
-  // Character animations
-  private directionIndicator?: Phaser.GameObjects.Triangle;
 
-  private lastVelocityX: number = 0;
-  private isGrounded: boolean = false;
-  private wasGrounded: boolean = false;
-
-  
-  // Thomas Was Alone style jump animation
-  private targetScaleX: number = 1;
-  private targetScaleY: number = 1;
-  private jumpAnticipationTime: number = 0;
-  private isAnticipatingJump: boolean = false;
-  private jumpVelocity: number = 0; // Track initial jump velocity
-  private justLandedThisFrame: boolean = false;
-  private landingRecoveryTime: number = 0;
   
   // Animation constants
   private readonly MAX_STRETCH: number = 1.20;
@@ -162,40 +117,22 @@ export class GameScene extends Phaser.Scene {
 
     // Create player - clean rectangle design with guaranteed visible texture
     
-    // Create a solid red texture programmatically to ensure visibility
-    const redGraphics = this.add.graphics();
-    redGraphics.fillStyle(COLORS.TEAMS.RED.PRIMARY, 1);
-    redGraphics.fillRect(0, 0, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
-    redGraphics.generateTexture('red-player', GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
-    redGraphics.destroy();
+    // Create local player
+    const playerId = this.localPlayerId || 'local-player';
+    this.player = new LocalPlayer(
+      this,
+      playerId,
+      100,
+      1350,
+      'red', // Default to red team
+      'You'
+    );
     
-    this.player = this.physics.add.sprite(100, 1350, 'red-player'); // Spawn near bottom of expanded arena
-    this.player.setOrigin(0.5, 1); // Bottom-center origin for proper jump stretching
-    
-    // Ensure normal scale at start
-    this.player.setScale(1, 1);
-    
-    this.player.setBounce(0.1);
-    this.player.setCollideWorldBounds(true); // Keep player within world bounds
-
-    // Player physics
-    (this.player.body as Phaser.Physics.Arcade.Body).setGravityY(0);
-    (this.player.body as Phaser.Physics.Arcade.Body).setSize(32, 48); // Back to normal size
+    // Add collision with platforms
     this.physics.add.collider(this.player, this.platforms);
     
-    // Create direction indicator (triangle above player)
-    this.directionIndicator = this.add.triangle(
-      this.player.x, 
-      this.player.y - 60, // Adjusted for bottom-center origin
-      0, 5,    // bottom left
-      5, 0,    // top
-      10, 5,   // bottom right
-      COLORS.EFFECTS.WHITE,
-      0.8
-    );
-    this.directionIndicator.setOrigin(0.5);
-    
-
+    // Set up player event listeners
+    this.setupPlayerEventListeners();
 
     // Camera setup - follow player but constrain to world bounds
     this.cameras.main.setBounds(0, 0, arenaWidth, ARENA_HEIGHT);
@@ -205,16 +142,7 @@ export class GameScene extends Phaser.Scene {
     // Set world bounds
     this.physics.world.setBounds(0, 0, arenaWidth, ARENA_HEIGHT);
 
-    // Create input handlers
-    if (!this.input.keyboard) {
-      throw new Error('Keyboard input not available');
-    }
-    
-    this.cursors = this.input.keyboard.createCursorKeys();
-    this.jumpKey = this.input.keyboard.addKey(INPUT_CONFIG.ACTIONS.JUMP);
-    this.dashKey = this.input.keyboard.addKey(INPUT_CONFIG.ACTIONS.DASH);
-    this.shootKey = this.input.keyboard.addKey(INPUT_CONFIG.ACTIONS.SHOOT_PRIMARY);
-    this.shootKeyAlt = this.input.keyboard.addKey(INPUT_CONFIG.ACTIONS.SHOOT_SECONDARY);
+
 
     // Initialize weapon system
     this.weaponSystem = new WeaponSystem(this, this.player);
@@ -240,6 +168,68 @@ export class GameScene extends Phaser.Scene {
     // Add atmospheric background elements
     this.createAtmosphericBackground();
     this.createParticles();
+  }
+  
+  setupPlayerEventListeners() {
+    // Listen for player events
+    this.player.events.on('jump', () => {
+      this.soundManager.playJump();
+      // Create dust effect
+      if (this.dustParticles) {
+        this.dustParticles.setPosition(this.player.x, this.player.y);
+        this.dustParticles.explode(5);
+      }
+    });
+    
+    this.player.events.on('land', () => {
+      // Create dust effect on landing
+      if (this.dustParticles) {
+        this.dustParticles.setPosition(this.player.x, this.player.y);
+        this.dustParticles.explode(3);
+      }
+    });
+    
+    this.player.events.on('dash-start', () => {
+      this.soundManager.playDash();
+      if (this.isMultiplayer && this.networkManager) {
+        this.networkManager.sendDash(true);
+      }
+    });
+    
+    this.player.events.on('dash-end', () => {
+      if (this.isMultiplayer && this.networkManager) {
+        this.networkManager.sendDash(false);
+      }
+    });
+    
+    this.player.events.on('shoot', (data: { x: number; y: number; direction: number; team: string }) => {
+      // Get team color for bullets
+      const bulletColor = data.team === "blue" ? COLORS.TEAMS.BLUE.GLOW : COLORS.TEAMS.RED.GLOW;
+      
+      if (this.weaponSystem.shoot(this.player.isDashing, bulletColor)) {
+        this.soundManager.playShoot();
+        
+        // Send shoot to server if multiplayer
+        if (this.isMultiplayer && this.networkManager) {
+          const bulletX = data.x + (24 * data.direction * 0.9);
+          const bulletY = data.y;
+          const bulletVelocityX = GAME_CONFIG.WEAPON.BULLET_SPEED * data.direction;
+          
+          this.networkManager.sendShoot({
+            x: bulletX,
+            y: bulletY,
+            velocityX: bulletVelocityX
+          });
+        }
+      }
+    });
+    
+    this.player.events.on('position-update', (data: { x: number; y: number; velocityX: number; velocityY: number; flipX: boolean }) => {
+      // Send position to server if multiplayer
+      if (this.isMultiplayer && this.networkManager) {
+        this.networkManager.sendMovement(data);
+      }
+    });
   }
 
   createElevatedPlatforms() {
@@ -327,7 +317,7 @@ export class GameScene extends Phaser.Scene {
     });
 
     // Store particles for later use
-    this.player.dustParticles = particles;
+    this.dustParticles = particles;
   }
 
   setupMultiplayerHandlers() {
@@ -352,11 +342,6 @@ export class GameScene extends Phaser.Scene {
       
       // Update player texture
       this.player.setTexture(`${data.team}-player`);
-      
-      // Update direction indicator color (if enabled)
-      if (this.directionIndicator) {
-        this.directionIndicator.setFillStyle(teamColor, 0.8);
-      }
       
       // Teleport to team spawn point
       const spawnPos = getSpawnPosition(data.team);
@@ -395,7 +380,7 @@ export class GameScene extends Phaser.Scene {
     this.networkManager.on("player-updated", (player: PlayerData) => {
       const remotePlayer = this.remotePlayers.get(player.id);
       if (remotePlayer) {
-        remotePlayer.update(
+        remotePlayer.updateFromServer(
           player.x, 
           player.y, 
           player.velocityX, 
@@ -844,233 +829,22 @@ export class GameScene extends Phaser.Scene {
     console.log("Left multiplayer mode");
   }
 
-  update() {
+  update(time: number, delta: number) {
     // Guard against player not existing yet
     if (!this.player || !this.player.body) {
       return;
     }
     
-    // Ensure cursors are initialized
-    if (!this.cursors) {
-      return;
-    }
+    // Update player
+    this.player.update(time, delta);
     
-    const maxSpeed = GAME_CONFIG.PLAYER.MAX_SPEED;
-    const acceleration = GAME_CONFIG.PLAYER.ACCELERATION;
-    const friction = GAME_CONFIG.PLAYER.FRICTION;
-    const dashPower = GAME_CONFIG.PLAYER.DASH.POWER;
-    
-    const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
-    const currentVelX = playerBody.velocity.x;
-    
-    // If player is dead, don't allow any input
-    if (this.isDead) {
-      return;
-    }
-
     // Update weapon system
-    this.weaponSystem.update(this.game.loop.delta);
-
-    // Handle shooting (either Space or A key)
-    if (Phaser.Input.Keyboard.JustDown(this.shootKey) || Phaser.Input.Keyboard.JustDown(this.shootKeyAlt)) {
-      // Get team color for bullets
-      let bulletColor: number = COLORS.TEAMS.RED.GLOW; // Default red
-      if (this.isMultiplayer && this.networkManager) {
-        const team = this.networkManager.getPlayerTeam();
-        bulletColor = team === "blue" ? COLORS.TEAMS.BLUE.GLOW : COLORS.TEAMS.RED.GLOW; // Bright team colors for bullets
-      }
-      
-      if (this.weaponSystem.shoot(this.isDashing, bulletColor)) {
-        this.soundManager.playShoot();
-        
-        // Send shoot to server if multiplayer
-        if (this.isMultiplayer && this.networkManager) {
-          const direction = this.player.flipX ? -1 : 1;
-          const bulletX = this.player.x + (24 * direction * 0.9);
-          const bulletY = this.player.y;
-          const bulletVelocityX = 700 * direction;
-          
-          // Validate bullet data before sending
-          if (isNaN(bulletX) || isNaN(bulletY) || isNaN(bulletVelocityX)) {
-            console.error("Invalid bullet data detected:", {
-              playerX: this.player.x,
-              playerY: this.player.y,
-              direction: direction,
-              bulletX: bulletX,
-              bulletY: bulletY,
-              bulletVelocityX: bulletVelocityX
-            });
-          } else {
-            this.networkManager.sendShoot({
-              x: bulletX,
-              y: bulletY,
-              velocityX: bulletVelocityX
-            });
-          }
-        }
-      }
-    }
-
-    // Update dash cooldown
-    if (this.dashCooldown > 0) {
-      this.dashCooldown -= this.game.loop.delta;
-    }
-
-    // Reset dash ability when touching ground
-    if (playerBody.touching.down) {
-      this.canDash = true;
-      // Cancel dash buffer if player lands
-      if (this.dashBuffering) {
-        this.dashBuffering = false;
-        this.dashBufferTime = 0;
-      }
-    }
-
-    // Handle dash buffering
-    if (this.dashBuffering) {
-      this.dashBufferTime += this.game.loop.delta;
-      
-      // Execute dash after buffer window
-      if (this.dashBufferTime >= this.DASH_BUFFER_WINDOW_MS) {
-        this.dashBuffering = false;
-        this.dashBufferTime = 0;
-        this.performDash(dashPower);
-      }
-    } else {
-      // Start dash buffer on fresh key press
-      if (Phaser.Input.Keyboard.JustDown(this.dashKey) && this.canDash && this.dashCooldown <= 0 && !this.isDashing && !playerBody.touching.down) {
-        this.dashBuffering = true;
-        this.dashBufferTime = 0;
-      }
-    }
-
-    // Handle dash
-    if (this.isDashing) {
-      // Check if player is still holding at least one initial direction
-      const stillHoldingLeft = this.initialDashDirections.left && this.cursors?.left?.isDown;
-      const stillHoldingRight = this.initialDashDirections.right && this.cursors?.right?.isDown;
-      const stillHoldingUp = this.initialDashDirections.up && this.cursors?.up?.isDown;
-      const stillHoldingDown = this.initialDashDirections.down && this.cursors?.down?.isDown;
-      
-      const stillHoldingAnyDirection = stillHoldingLeft || stillHoldingRight || stillHoldingUp || stillHoldingDown;
-      
-      if (!stillHoldingAnyDirection) {
-        // Cancel dash early
-        this.endDash();
-      } else {
-        this.updateDashTrails();
-      }
-      return;
-    }
-
-    // Horizontal movement
-    if (this.cursors?.left?.isDown) {
-      // Accelerate to max speed quickly
-      const newVelX = Math.max(currentVelX - acceleration * (1/60), -maxSpeed);
-      this.player.setVelocityX(newVelX);
-      this.player.setFlipX(true);
-    } else if (this.cursors?.right?.isDown) {
-      // Accelerate to max speed quickly
-      const newVelX = Math.min(currentVelX + acceleration * (1/60), maxSpeed);
-      this.player.setVelocityX(newVelX);
-      this.player.setFlipX(false);
-    } else {
-      // Apply friction for quick stop
-      if (Math.abs(currentVelX) > 10) {
-        const frictionForce = friction * (1/60);
-        if (currentVelX > 0) {
-          this.player.setVelocityX(Math.max(0, currentVelX - frictionForce));
-        } else {
-          this.player.setVelocityX(Math.min(0, currentVelX + frictionForce));
-        }
-      } else {
-        this.player.setVelocityX(0);
-      }
-    }
-
-    // Jumping - only on fresh key press, not when held
-    const canJump = playerBody.touching.down || this.coyoteTime > 0;
+    this.weaponSystem.update(delta);
     
-    if (this.jumpKey && Phaser.Input.Keyboard.JustDown(this.jumpKey) && canJump) {
-      this.player.setVelocityY(-GAME_CONFIG.PLAYER.JUMP_POWER);
-      this.coyoteTime = 0; // Reset coyote time after jumping
-      
-      // Create dust effect on jump
-      const particles = this.player.dustParticles;
-      if (particles) {
-        particles.setPosition(this.player.x, this.player.y + 24);
-        particles.explode(5);
-      }
-    }
-
-    // Update coyote time
-    if (playerBody.touching.down) {
-      this.coyoteTime = this.COYOTE_TIME_MS;
-    } else if (this.coyoteTime > 0) {
-      this.coyoteTime -= this.game.loop.delta;
-    }
-
-    // Fast fall when pressing down in midair (only if not dashing)
-    if (this.cursors?.down?.isDown && !playerBody.touching.down && !this.isDashing) {
-      // Apply strong downward force for fast fall
-      this.player.setVelocityY(Math.max(playerBody.velocity.y, 300));
-    }
-
-    // Dynamic gravity based on jump phase (skip if dashing)
-    if (!this.isDashing) {
-      if (!playerBody.touching.down) {
-        // Check if fast falling
-        const isFastFalling = this.cursors?.down?.isDown && playerBody.velocity.y > 0;
-        
-        if (isFastFalling) {
-          // Fast fall - very high gravity
-          playerBody.setGravityY(GAME_CONFIG.PLAYER.GRAVITY.FAST_FALL);
-        } else if (playerBody.velocity.y < -50) {
-          // Ascending fast - normal gravity for quick rise
-          playerBody.setGravityY(GAME_CONFIG.PLAYER.GRAVITY.ASCENDING);
-        } else if (playerBody.velocity.y >= -50 && playerBody.velocity.y <= 30) {
-          // Hang time - slightly reduced gravity for brief float (less floaty)
-          playerBody.setGravityY(GAME_CONFIG.PLAYER.GRAVITY.HANG_TIME);
-        } else {
-          // Falling fast - high gravity for quick descent
-          playerBody.setGravityY(GAME_CONFIG.PLAYER.GRAVITY.FALLING);
-        }
-      } else {
-        // On ground - reset gravity
-        playerBody.setGravityY(0);
-      }
-    }
-
-    // Add some bounce and feel
-    if (playerBody.touching.down && Math.abs(playerBody.velocity.x) > 0) {
-      // Create small dust particles when running
-      if (Math.random() < 0.1) {
-        const particles = this.player.dustParticles;
-        if (particles) {
-          particles.setPosition(this.player.x, this.player.y + 24);
-          particles.explode(1);
-        }
-      }
-    }
-
-    // Camera smoothing based on player movement
-    const camera = this.cameras.main;
-    if (Math.abs(playerBody.velocity.x) > 50) {
-      camera.setLerp(0.1, 0.1);
-    } else {
-      camera.setLerp(0.05, 0.05);
-    }
-
-    // Update dash trails
-    this.updateDashTrails();
-
-    // Apply smooth reconciliation if we have prediction error (only when not dashing)
-    if (!this.isDashing && (this.predictionError.x !== 0 || this.predictionError.y !== 0)) {
-      // Use slower reconciliation for a brief period after dashing
-      const reconciliationSpeed = this.dashCooldown > 0 ? 0.05 : this.reconciliationSpeed;
-      
-      const reconcileX = this.predictionError.x * reconciliationSpeed * (this.game.loop.delta / 1000);
-      const reconcileY = this.predictionError.y * reconciliationSpeed * (this.game.loop.delta / 1000);
+    // Apply smooth reconciliation if we have prediction error
+    if (this.predictionError.x !== 0 || this.predictionError.y !== 0) {
+      const reconcileX = this.predictionError.x * this.reconciliationSpeed * (delta / 1000);
+      const reconcileY = this.predictionError.y * this.reconciliationSpeed * (delta / 1000);
       
       // Apply reconciliation
       this.player.x += reconcileX;
@@ -1084,190 +858,25 @@ export class GameScene extends Phaser.Scene {
       if (Math.abs(this.predictionError.x) < 0.1) this.predictionError.x = 0;
       if (Math.abs(this.predictionError.y) < 0.1) this.predictionError.y = 0;
     }
-
-    // Send player position to server if multiplayer
-    if (this.isMultiplayer && this.networkManager) {
-      this.networkManager.sendMovement({
-        x: this.player.x,
-        y: this.player.y,
-        velocityX: playerBody.velocity.x,
-        velocityY: playerBody.velocity.y,
-        flipX: this.player.flipX
-      });
-      
-      // Update debug text
-      if (this.debugText && this.debugText.visible) {
-        const errorMag = Math.sqrt(this.predictionError.x * this.predictionError.x + this.predictionError.y * this.predictionError.y);
-        this.debugText.setText([
-          `Network Debug (F3 to hide)`,
-          `Player ID: ${this.localPlayerId}`,
-          `Position: ${Math.round(this.player.x)}, ${Math.round(this.player.y)}`,
-          `Velocity: ${Math.round(playerBody.velocity.x)}, ${Math.round(playerBody.velocity.y)}`,
-          `Prediction Error: ${errorMag.toFixed(1)}px`,
-          `Dash State: ${this.isDashing ? 'DASHING' : (this.dashCooldown > 0 ? `Cooldown: ${Math.round(this.dashCooldown)}ms` : 'Ready')}`,
-          `Remote Players: ${this.remotePlayers.size}`,
-          `FPS: ${Math.round(this.game.loop.actualFps)}`
-        ].join('\n'));
-      }
+    
+    // Update debug text
+    if (this.debugText && this.debugText.visible) {
+      const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
+      const errorMag = Math.sqrt(this.predictionError.x * this.predictionError.x + this.predictionError.y * this.predictionError.y);
+      this.debugText.setText([
+        `Network Debug (F3 to hide)`,
+        `Player ID: ${this.localPlayerId}`,
+        `Position: ${Math.round(this.player.x)}, ${Math.round(this.player.y)}`,
+        `Velocity: ${Math.round(playerBody.velocity.x)}, ${Math.round(playerBody.velocity.y)}`,
+        `Prediction Error: ${errorMag.toFixed(1)}px`,
+        `Dash State: ${this.player.isDashing ? 'DASHING' : (this.player.getDashCooldown() > 0 ? `Cooldown: ${Math.round(this.player.getDashCooldown())}ms` : 'Ready')}`,
+        `Remote Players: ${this.remotePlayers.size}`,
+        `FPS: ${Math.round(this.game.loop.actualFps)}`
+      ].join('\n'));
     }
-
-    // Update character animations
-    this.updateCharacterAnimations(); // Re-enabled now that visibility is fixed
   }
 
-  performDash(dashPower: number) {
-    // Determine dash direction based on input
-    let dashX = 0;
-    let dashY = 0;
 
-    // Store initial dash directions
-    this.initialDashDirections.left = !!this.cursors?.left?.isDown;
-    this.initialDashDirections.right = !!this.cursors?.right?.isDown;
-    this.initialDashDirections.up = !!this.cursors?.up?.isDown;
-    this.initialDashDirections.down = !!this.cursors?.down?.isDown;
-
-    if (this.initialDashDirections.left) {
-      dashX = -1;
-    }
-    if (this.initialDashDirections.right) {
-      dashX = 1;
-    }
-    if (this.initialDashDirections.up) {
-      dashY = -1;
-    }
-    if (this.initialDashDirections.down) {
-      dashY = 1;
-    }
-
-    // Default to horizontal dash in facing direction if no input
-    if (dashX === 0 && dashY === 0) {
-      dashX = this.player.flipX ? -1 : 1;
-      // Update the stored direction for default dash
-      if (this.player.flipX) {
-        this.initialDashDirections.left = true;
-      } else {
-        this.initialDashDirections.right = true;
-      }
-    }
-
-    // Normalize diagonal dashes
-    const magnitude = Math.sqrt(dashX * dashX + dashY * dashY);
-    if (magnitude > 0) {
-      dashX /= magnitude;
-      dashY /= magnitude;
-    }
-
-    // Apply dash velocity
-    this.player.setVelocity(dashX * dashPower, dashY * dashPower);
-    
-    // Disable gravity during dash
-    const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
-    playerBody.allowGravity = false;
-    
-    // Set dash state
-    this.isDashing = true;
-    this.canDash = false;
-    this.dashCooldown = 300; // Longer cooldown for network sync
-
-    // Play dash sound
-    this.soundManager.playDash();
-
-    // Clear any existing prediction error when starting dash
-    this.predictionError.x = 0;
-    this.predictionError.y = 0;
-    console.log(`Starting dash with velocity: ${dashX * dashPower}, ${dashY * dashPower}`);
-
-    // Send dash to server if multiplayer
-    if (this.isMultiplayer && this.networkManager) {
-      this.networkManager.sendDash(true);
-    }
-
-    // Keep team color during dash (no tint change for cleaner aesthetic)
-    // The dash trails will provide the visual feedback
-
-    // End dash after duration (if not cancelled early)
-    this.time.delayedCall(GAME_CONFIG.PLAYER.DASH.DURATION, () => {
-      if (this.isDashing) {
-        this.endDash();
-      }
-    });
-
-    // Create initial dash trail
-    this.createDashTrail();
-  }
-
-  endDash() {
-    this.isDashing = false;
-    
-    // Send dash end to server if multiplayer
-    if (this.isMultiplayer && this.networkManager) {
-      this.networkManager.sendDash(false);
-    }
-    
-    // No need to set tint - texture already has correct color
-    // REMOVED: Team color tinting since we use direct colored textures
-    
-    // Reduce velocity slightly after dash
-    const body = this.player.body as Phaser.Physics.Arcade.Body;
-    const currentVelX = body.velocity.x;
-    const currentVelY = body.velocity.y;
-    this.player.setVelocity(currentVelX * 0.7, currentVelY * 0.7);
-    
-    // Re-enable gravity after dash
-    body.allowGravity = true;
-    // The dynamic gravity system will take over in the next update cycle
-    
-    // Reset scale and rotation after dash
-    this.player.setScale(1, 1);
-    this.player.setRotation(0);
-    
-
-    
-    // Reset initial dash directions
-    this.initialDashDirections.left = false;
-    this.initialDashDirections.right = false;
-    this.initialDashDirections.up = false;
-    this.initialDashDirections.down = false;
-  }
-
-  createDashTrail() {
-    // Remove oldest trail if at max
-    if (this.dashTrails.length >= this.MAX_TRAILS) {
-      const oldTrail = this.dashTrails.shift();
-      if (oldTrail) {
-        oldTrail.destroy();
-      }
-    }
-
-    // Create new trail using the same texture as the player
-    const trail = this.add.sprite(this.player.x, this.player.y, this.player.texture.key);
-    trail.setDisplaySize(32, 48);
-    trail.setAlpha(0.6);
-    trail.setFlipX(this.player.flipX);
-
-    this.dashTrails.push(trail);
-
-    // Fade out trail
-    this.tweens.add({
-      targets: trail,
-      alpha: 0,
-      duration: 200,
-      onComplete: () => {
-        const index = this.dashTrails.indexOf(trail);
-        if (index > -1) {
-          this.dashTrails.splice(index, 1);
-        }
-        trail.destroy();
-      }
-    });
-  }
-
-  updateDashTrails() {
-    // Create trail during dash
-    if (this.isDashing && Math.random() < 0.8) {
-      this.createDashTrail();
-    }
-  }
   
   handleServerReconciliation(serverPos: { x: number; y: number }) {
     // Calculate prediction error
@@ -1286,7 +895,7 @@ export class GameScene extends Phaser.Scene {
       this.lastServerPosition.y = serverPos.y;
       
       // Be more tolerant during dashes and shortly after
-      const snapThreshold = this.isDashing || this.dashCooldown > 0 ? 300 : 100;
+      const snapThreshold = this.player.isDashing || this.player.getDashCooldown() > 0 ? 300 : 100;
       
       // If error is too large, snap to server position
       if (errorMagnitude > snapThreshold) {
@@ -1302,135 +911,7 @@ export class GameScene extends Phaser.Scene {
     }
   }
   
-  // Character animation methods
 
-  
-  updateCharacterAnimations() {
-    // Safety check
-    if (!this.player || !this.player.body || !this.player.active) {
-      return;
-    }
-    
-    const body = this.player.body as Phaser.Physics.Arcade.Body;
-    const velocityX = body.velocity.x;
-    const velocityY = body.velocity.y;
-
-    // Check if grounded
-    this.wasGrounded = this.isGrounded;
-    this.isGrounded = body.blocked.down || body.touching.down;
-
-    // Detect landing this frame
-    this.justLandedThisFrame = !this.wasGrounded && this.isGrounded && velocityY > 50;
-    
-    // Thomas Was Alone style jump animation states
-    if (this.isGrounded) {
-      if (this.justLandedThisFrame) {
-        // Landing squash
-        this.targetScaleY = this.MAX_SQUASH;
-        this.targetScaleX = 1 / this.MAX_SQUASH; // Preserve volume
-        this.landingRecoveryTime = this.time.now;
-      } else if (this.time.now - this.landingRecoveryTime < this.LANDING_DURATION) {
-        // Spring-damped recovery from landing
-        const t = (this.time.now - this.landingRecoveryTime) / this.LANDING_DURATION;
-        const overshoot = 1 + Math.sin(t * Math.PI) * 0.05; // Slight overshoot
-        this.targetScaleY = overshoot;
-        this.targetScaleX = 1 / overshoot;
-      } else if (this.input.keyboard && (this.input.keyboard.addKey('W').isDown || 
-                 this.input.keyboard.addKey('ArrowUp').isDown || 
-                 this.input.keyboard.addKey(' ').isDown) && !this.isAnticipatingJump) {
-        // Start jump anticipation
-        this.isAnticipatingJump = true;
-        this.jumpAnticipationTime = this.time.now;
-        this.targetScaleY = this.ANTICIPATION_SQUASH;
-        this.targetScaleX = 1 / this.ANTICIPATION_SQUASH;
-      } else if (!this.isAnticipatingJump) {
-        // Normal standing
-        this.targetScaleY = 1;
-        this.targetScaleX = 1;
-      }
-    } else {
-      // In air
-      this.isAnticipatingJump = false;
-      
-      if (velocityY < 0) {
-        // Rising - stretch based on velocity
-        const t = Math.min(-velocityY / 800, 1); // 800 is roughly max jump velocity
-        this.targetScaleY = 1 + (this.MAX_STRETCH - 1) * t;
-        this.targetScaleX = 1 / this.targetScaleY;
-        
-        // Store jump velocity for later
-        if (this.wasGrounded) {
-          this.jumpVelocity = velocityY;
-        }
-      } else {
-        // Falling - gradually return to normal
-        const t = Math.min(velocityY / 400, 1);
-        this.targetScaleY = 1 + (this.MAX_STRETCH - 1) * (1 - t);
-        this.targetScaleX = 1 / this.targetScaleY;
-      }
-    }
-    
-    // Handle jump anticipation timing
-    if (this.isAnticipatingJump && this.time.now - this.jumpAnticipationTime > this.ANTICIPATION_DURATION) {
-      // Anticipation complete, allow jump
-      this.isAnticipatingJump = false;
-    }
-
-
-
-    // Movement lean
-    if (Math.abs(velocityX) > 10) {
-      const leanAngle = Phaser.Math.Clamp(velocityX * 0.015, -5, 5); // Max 5 degrees
-      this.player.setRotation(Phaser.Math.DegToRad(leanAngle));
-    } else if (this.isGrounded && !this.isDashing) {
-      // Return to upright position
-      this.player.setRotation(0);
-    }
-
-    // Smooth interpolation to target scales
-    const dt = this.game.loop.delta / 1000; // Delta time in seconds
-    const currentScaleY = this.player.scaleY;
-    const currentScaleX = this.player.scaleX;
-    
-    // Lerp to target scales
-    this.player.setScale(
-      currentScaleX + (this.targetScaleX - currentScaleX) * this.STRETCH_SPEED * dt,
-      currentScaleY + (this.targetScaleY - currentScaleY) * this.STRETCH_SPEED * dt
-    )
-    
-    // Update direction indicator
-    if (this.directionIndicator) {
-      // Position above player (adjusted for bottom-center origin)
-      this.directionIndicator.setPosition(this.player.x, this.player.y - 60);
-      
-      // Point in movement direction or fade if stationary
-      if (Math.abs(velocityX) > 10) {
-        this.directionIndicator.setAlpha(0.8);
-        
-        // Calculate angle based on velocity
-        const angle = velocityX > 0 ? 90 : -90;
-        this.directionIndicator.setRotation(Phaser.Math.DegToRad(angle));
-        
-        // Store last velocity for when stopped
-        this.lastVelocityX = velocityX;
-      } else {
-        // Fade out when not moving
-        this.directionIndicator.setAlpha(0.3);
-        
-        // Keep pointing in last direction
-        const angle = this.lastVelocityX > 0 ? 90 : -90;
-        this.directionIndicator.setRotation(Phaser.Math.DegToRad(angle));
-      }
-      
-      // Glow during dash
-      if (this.isDashing) {
-        this.directionIndicator.setAlpha(1);
-        this.directionIndicator.setScale(1.2);
-      } else {
-        this.directionIndicator.setScale(1);
-      }
-    }
-  }
   
 
 }

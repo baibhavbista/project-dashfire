@@ -1,131 +1,63 @@
 import Phaser from 'phaser';
+import { BasePlayer } from '../entities/BasePlayer';
+import { Team } from '../config/GameConfig';
 
-export class RemotePlayer {
-  public sprite: Phaser.Physics.Arcade.Sprite;
-  public id: string;
-  public team: "red" | "blue";
-  private healthBar?: Phaser.GameObjects.Rectangle;
-  private healthBarBg?: Phaser.GameObjects.Rectangle;
-  private scene: Phaser.Scene;
-  private gun: Phaser.GameObjects.Rectangle;
-  private isDestroyed: boolean = false;
-  private nameText?: Phaser.GameObjects.Text;
-  
-  // Interpolation state
+/**
+ * Remote player class for networked players
+ * Extends BasePlayer with interpolation and network state synchronization
+ */
+export class RemotePlayer extends BasePlayer {
+  // Network state
   private targetX: number;
   private targetY: number;
   private targetVelocityX: number = 0;
   private targetVelocityY: number = 0;
   private interpolationFactor: number = 0.2;
   
-  // Dash trail properties
-  private dashTrails: Phaser.GameObjects.Sprite[] = [];
-  private readonly MAX_TRAILS: number = 8;
-  private wasDashing: boolean = false;
+  // Gun visual (not in BasePlayer)
+  private gun?: Phaser.GameObjects.Rectangle;
   
-  // Animation properties
-  private directionIndicator?: Phaser.GameObjects.Triangle;
-
-  private lastVelocityX: number = 0;
-  private isGrounded: boolean = false;
-  private wasGrounded: boolean = false;
-  
-  constructor(scene: Phaser.Scene, id: string, x: number, y: number, team: "red" | "blue", name?: string) {
-    this.scene = scene;
-    this.id = id;
-    this.team = team;
+  constructor(
+    scene: Phaser.Scene, 
+    id: string, 
+    x: number, 
+    y: number, 
+    team: Team, 
+    name: string = 'Player'
+  ) {
+    super(scene, id, x, y, team, name, false);
     
-    // Initialize position
+    // Initialize network position
     this.targetX = x;
     this.targetY = y;
     
-    // Create sprite
-    this.sprite = scene.physics.add.sprite(x, y, 'white-rect');
-    this.sprite.setDisplaySize(32, 48); // Back to normal size
-    this.sprite.setOrigin(0.5, 1); // Bottom-center origin to match local player
-    
-    // Set team color - Thomas Was Alone vibrant colors
-    const teamColor = team === "red" ? 0xE74C3C : 0x3498DB;
-    this.sprite.setTint(teamColor);
-    
-    // Ensure normal scale at start
-    this.sprite.setScale(1, 1);
-    
-    // Disable physics for remote players (they're controlled by server)
-    const body = this.sprite.body as Phaser.Physics.Arcade.Body;
+    // Disable physics for remote players (controlled by server)
+    const body = this.body as Phaser.Physics.Arcade.Body;
     body.setAllowGravity(false);
     body.setImmovable(true);
     
-    // Create health bar
-    this.createHealthBar();
-    
     // Create gun visual
-    this.gun = scene.add.rectangle(0, 0, 24, 3, 0x666666);
+    this.createGun();
+  }
+  
+  private createGun(): void {
+    this.gun = this.scene.add.rectangle(0, 0, 24, 3, 0x666666);
     this.gun.setOrigin(0, 0.5);
-    
-    // Create name text
-    this.nameText = scene.add.text(x, y - 75, name || "Unknown", { // Adjusted for bottom-center origin
-      fontSize: '14px',
-      color: '#ffffff',
-      stroke: '#000000',
-      strokeThickness: 2
-    });
-    this.nameText.setOrigin(0.5);
-    
-    // Create direction indicator
-    this.directionIndicator = scene.add.triangle(
-      x, 
-      y - 60, // Adjusted for bottom-center origin
-      0, 5,    // bottom left
-      5, 0,    // top
-      10, 5,   // bottom right
-      teamColor,
-      0.8
-    );
-    this.directionIndicator.setOrigin(0.5);
-    
-
   }
   
-  private createHealthBar(): void {
-    const barWidth = 40;
-    const barHeight = 4;
-    const yOffset = -35;
-    
-    // Background
-    this.healthBarBg = this.scene.add.rectangle(
-      this.sprite.x,
-      this.sprite.y + yOffset,
-      barWidth,
-      barHeight,
-      0x000000,
-      0.8
-    );
-    
-    // Health bar
-    this.healthBar = this.scene.add.rectangle(
-      this.sprite.x,
-      this.sprite.y + yOffset,
-      barWidth,
-      barHeight,
-      0x00FF00
-    );
-    this.healthBar.setOrigin(0, 0.5);
-    this.healthBar.x -= barWidth / 2;
-  }
-  
-  update(x: number, y: number, velocityX: number, velocityY: number, health: number, flipX: boolean, isDashing: boolean, isDead: boolean): void {
-    // Safety check - make sure player hasn't been destroyed
-    if (this.isDestroyed) {
-      return;
-    }
-    
-    // Safety check - make sure sprite still exists
-    if (!this.sprite || !this.sprite.body) {
-      console.warn(`RemotePlayer ${this.id} sprite destroyed, skipping update`);
-      return;
-    }
-    
+  /**
+   * Update remote player state from server
+   */
+  public updateFromServer(
+    x: number, 
+    y: number, 
+    velocityX: number, 
+    velocityY: number, 
+    health: number, 
+    flipX: boolean, 
+    isDashing: boolean, 
+    isDead: boolean
+  ): void {
     // Update target position
     this.targetX = x;
     this.targetY = y;
@@ -133,14 +65,14 @@ export class RemotePlayer {
     this.targetVelocityY = velocityY;
     
     // Calculate distance to target
-    const dx = this.targetX - this.sprite.x;
-    const dy = this.targetY - this.sprite.y;
+    const dx = this.targetX - this.x;
+    const dy = this.targetY - this.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
     
-    // Adjust interpolation based on distance (faster catch-up for larger distances)
+    // Adjust interpolation based on distance
     let lerpFactor = this.interpolationFactor;
     if (distance > 100) {
-      lerpFactor = 0.5; // Faster interpolation for large distances
+      lerpFactor = 0.5; // Faster catch-up for large distances
     } else if (distance > 50) {
       lerpFactor = 0.3;
     }
@@ -149,197 +81,63 @@ export class RemotePlayer {
     const predictedX = this.targetX + (this.targetVelocityX * 0.05); // Predict 50ms ahead
     const predictedY = this.targetY + (this.targetVelocityY * 0.05);
     
-    this.sprite.x = Phaser.Math.Linear(this.sprite.x, predictedX, lerpFactor);
-    this.sprite.y = Phaser.Math.Linear(this.sprite.y, predictedY, lerpFactor);
+    this.x = Phaser.Math.Linear(this.x, predictedX, lerpFactor);
+    this.y = Phaser.Math.Linear(this.y, predictedY, lerpFactor);
     
     // Set velocity for physics interactions
-    this.sprite.setVelocity(
-      (this.targetX - this.sprite.x) * 10, // Smooth velocity based on position difference
-      (this.targetY - this.sprite.y) * 10
+    this.setVelocity(
+      (this.targetX - this.x) * 10,
+      (this.targetY - this.y) * 10
     );
     
-    // Update flip
-    this.sprite.setFlipX(flipX);
+    // Update visual state
+    this.setFlipX(flipX);
+    this.updateHealth(health);
+    this.setDead(isDead);
     
     // Update gun position
-    if (this.gun && this.gun.active) {
+    if (this.gun) {
       const direction = flipX ? -1 : 1;
-      const gunX = this.sprite.x + (8 * direction);
-      const gunY = this.sprite.y - 24; // Adjusted for bottom-center origin
+      const gunX = this.x + (8 * direction);
+      const gunY = this.y - 24;
       this.gun.setPosition(gunX, gunY);
       this.gun.setScale(direction, 1);
+      this.gun.setVisible(!isDead);
     }
     
-    // Update health bar position
-    if (this.healthBarBg && this.healthBar && this.healthBarBg.active && this.healthBar.active) {
-      const yOffset = -59; // Adjusted for bottom-center origin (was -35 for center origin)
-      this.healthBarBg.setPosition(this.sprite.x, this.sprite.y + yOffset);
-      this.healthBar.setPosition(this.sprite.x - 20, this.sprite.y + yOffset);
-      
-      // Update health bar width
-      const healthPercent = Math.max(0, health / 100);
-      this.healthBar.setDisplaySize(40 * healthPercent, 4);
-      
-      // Change color based on health
-      if (healthPercent > 0.6) {
-        this.healthBar.setFillStyle(0x00FF00);
-      } else if (healthPercent > 0.3) {
-        this.healthBar.setFillStyle(0xFFFF00);
-      } else {
-        this.healthBar.setFillStyle(0xFF0000);
-      }
-    }
-    
-    // Update name position
-    if (this.nameText && this.nameText.active) {
-      this.nameText.setPosition(this.sprite.x, this.sprite.y - 75); // Adjusted for bottom-center origin
-    }
-    
-    // Handle death state
-    if (isDead) {
-      this.sprite.setAlpha(0.3);
-      if (this.gun && this.gun.active) this.gun.setVisible(false);
-      if (this.healthBar && this.healthBar.active) this.healthBar.setVisible(false);
-      if (this.healthBarBg && this.healthBarBg.active) this.healthBarBg.setVisible(false);
-      if (this.nameText && this.nameText.active) this.nameText.setVisible(false);
-      if (this.directionIndicator && this.directionIndicator.active) this.directionIndicator.setVisible(false);
-    } else {
-      this.sprite.setAlpha(1);
-      if (this.gun && this.gun.active) this.gun.setVisible(true);
-      if (this.healthBar && this.healthBar.active) this.healthBar.setVisible(true);
-      if (this.healthBarBg && this.healthBarBg.active) this.healthBarBg.setVisible(true);
-      if (this.nameText && this.nameText.active) this.nameText.setVisible(true);
-      if (this.directionIndicator && this.directionIndicator.active) this.directionIndicator.setVisible(true);
-    }
-    
-    // Update dash state
-    if (isDashing) {
-      // Keep team color during dash (no tint change)
-      // The dash trails provide the visual feedback
-      
-      // Start creating dash trails if just started dashing
-      if (!this.wasDashing) {
-        this.wasDashing = true;
-      }
-      
-      // Create dash trails while dashing
-      if (Math.random() < 0.8) {
-        this.createDashTrail();
-      }
-    } else {
-      // Maintain team color when not dashing
-      const teamColor = this.team === "red" ? 0xE74C3C : 0x3498DB;
-      this.sprite.setTint(teamColor);
+    // Handle dash state
+    if (isDashing && !this.wasDashing) {
+      // Just started dashing
+      this._isDashing = true;
+      this.wasDashing = true;
+    } else if (!isDashing && this.wasDashing) {
+      // Just stopped dashing
+      this._isDashing = false;
       this.wasDashing = false;
     }
     
-    // Update character animations
-    this.updateAnimations();
+    // Create dash trails while dashing
+    if (this.isDashing && Math.random() < 0.8) {
+      this.createDashTrail();
+    }
+    
+    // Update animations
+    this.updateCharacterAnimations(this.targetVelocityX);
+    
+    // Update UI positions
+    this.updateUIPositions();
   }
   
-  private createDashTrail(): void {
-    // Safety check
-    if (this.isDestroyed || !this.sprite || !this.sprite.active) return;
-    
-    // Remove oldest trail if at max
-    if (this.dashTrails.length >= this.MAX_TRAILS) {
-      const oldTrail = this.dashTrails.shift();
-      if (oldTrail) {
-        oldTrail.destroy();
-      }
-    }
-
-    // Create new trail
-    const trail = this.scene.add.sprite(this.sprite.x, this.sprite.y, 'white-rect');
-    trail.setDisplaySize(32, 48); // Back to normal size
-    
-    // Use team glow colors for dash trail
-    const trailColor = this.team === "red" ? 0xFF6B6B : 0x5DADE2;
-    trail.setTint(trailColor);
-    trail.setAlpha(0.6);
-    trail.setFlipX(this.sprite.flipX);
-
-    this.dashTrails.push(trail);
-
-    // Fade out trail
-    this.scene.tweens.add({
-      targets: trail,
-      alpha: 0,
-      duration: 200,
-      onComplete: () => {
-        const index = this.dashTrails.indexOf(trail);
-        if (index > -1) {
-          this.dashTrails.splice(index, 1);
-        }
-        trail.destroy();
-      }
-    });
-  }
-  
-  // Animation methods
-  
-  updateAnimations(): void {
-    // Movement lean
-    if (Math.abs(this.targetVelocityX) > 10) {
-      const leanAngle = Phaser.Math.Clamp(this.targetVelocityX * 0.015, -5, 5);
-      this.sprite.setRotation(Phaser.Math.DegToRad(leanAngle));
-    } else {
-      // Return to upright when idle
-      this.sprite.setRotation(0);
-    }
-    
-    // Update direction indicator
-    if (this.directionIndicator && this.directionIndicator.active) {
-      // Position above sprite (adjusted for bottom-center origin)
-      this.directionIndicator.setPosition(this.sprite.x, this.sprite.y - 60);
-      
-      // Point in movement direction
-      if (Math.abs(this.targetVelocityX) > 10) {
-        this.directionIndicator.setAlpha(0.8);
-        const angle = this.targetVelocityX > 0 ? 90 : -90;
-        this.directionIndicator.setRotation(Phaser.Math.DegToRad(angle));
-        this.lastVelocityX = this.targetVelocityX;
-      } else {
-        // Fade when stationary
-        this.directionIndicator.setAlpha(0.3);
-        const angle = this.lastVelocityX > 0 ? 90 : -90;
-        this.directionIndicator.setRotation(Phaser.Math.DegToRad(angle));
-      }
-    }
-  }
-  
-  destroy(): void {
-    // Mark as destroyed to prevent any further updates
-    this.isDestroyed = true;
-    
-    // Stop animations
-    
-    // Clean up dash trails
-    this.dashTrails.forEach(trail => {
-      if (trail && trail.active) {
-        trail.destroy();
-      }
-    });
-    this.dashTrails = [];
-    
-    // Safely destroy all game objects
-    if (this.sprite && this.sprite.active) {
-      this.sprite.destroy();
-    }
-    if (this.healthBar && this.healthBar.active) {
-      this.healthBar.destroy();
-    }
-    if (this.healthBarBg && this.healthBarBg.active) {
-      this.healthBarBg.destroy();
-    }
-    if (this.gun && this.gun.active) {
+  /**
+   * Clean up remote player
+   */
+  public destroy(): void {
+    // Destroy gun
+    if (this.gun) {
       this.gun.destroy();
     }
-    if (this.nameText && this.nameText.active) {
-      this.nameText.destroy();
-    }
-    if (this.directionIndicator && this.directionIndicator.active) {
-      this.directionIndicator.destroy();
-    }
+    
+    // Call parent destroy
+    super.destroy();
   }
 } 
