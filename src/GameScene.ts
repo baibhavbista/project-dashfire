@@ -10,15 +10,16 @@ import { COLORS, getTeamColors } from './config/Colors';
 import { GAME_CONFIG, getSpawnPosition, Team } from './config/GameConfig';
 import { GameHUD } from './ui/GameHUD';
 import { KillFeed } from './ui/KillFeed';
+import { EffectsSystem } from './systems/EffectsSystem';
 
 // Team colors now imported from config/Colors.ts
 
 export class GameScene extends Phaser.Scene {
   private player!: LocalPlayer;
   private platforms!: Phaser.Physics.Arcade.StaticGroup;
-  private dustParticles?: Phaser.GameObjects.Particles.ParticleEmitter;
   private weaponSystem!: WeaponSystem;
   private soundManager!: SoundManager;
+  private effectsSystem!: EffectsSystem;
   private networkManager?: NetworkManager;
   private remotePlayers: Map<string, RemotePlayer> = new Map();
   private isMultiplayer: boolean = false;
@@ -207,6 +208,10 @@ export class GameScene extends Phaser.Scene {
     // Initialize sound manager
     this.soundManager = new SoundManager(this);
     
+    // Initialize effects system
+    this.effectsSystem = new EffectsSystem(this);
+    this.effectsSystem.initialize();
+    
     // Initialize UI managers
     this.gameHUD = new GameHUD(this);
     this.killFeed = new KillFeed(this);
@@ -223,12 +228,11 @@ export class GameScene extends Phaser.Scene {
       }
       
       // Visual effect for both modes
-      this.createBulletImpactEffect(bullet.x, bullet.y);
+      this.effectsSystem.createBulletImpactEffect(bullet.x, bullet.y);
     });
 
     // Add atmospheric background elements
     this.createAtmosphericBackground();
-    this.createParticles();
     
 
   }
@@ -238,18 +242,12 @@ export class GameScene extends Phaser.Scene {
     this.player.events.on('jump', () => {
       this.soundManager.playJump();
       // Create dust effect
-      if (this.dustParticles) {
-        this.dustParticles.setPosition(this.player.x, this.player.y);
-        this.dustParticles.explode(5);
-      }
+      this.effectsSystem.createDustEffect(this.player.x, this.player.y, 5);
     });
     
     this.player.events.on('land', () => {
       // Create dust effect on landing
-      if (this.dustParticles) {
-        this.dustParticles.setPosition(this.player.x, this.player.y);
-        this.dustParticles.explode(3);
-      }
+      this.effectsSystem.createDustEffect(this.player.x, this.player.y, 3);
     });
     
     this.player.events.on('dash-start', () => {
@@ -368,20 +366,7 @@ export class GameScene extends Phaser.Scene {
     vignette.setDepth(-100); // Ensure it's behind everything
   }
 
-  createParticles() {
-    // Create dust particles for landing effects - subtle and matching platform color
-    const particles = this.add.particles(0, 0, 'white-rect', {
-      scale: { start: 0.05, end: 0.15 },
-      speed: { min: 30, max: 60 },
-      lifespan: 400,
-      quantity: 0,
-      tint: COLORS.EFFECTS.DUST,
-      alpha: { start: 0.5, end: 0 }
-    });
 
-    // Store particles for later use
-    this.dustParticles = particles;
-  }
 
   setupMultiplayerHandlers() {
     if (!this.networkManager || !this.isMultiplayer) return;
@@ -544,7 +529,7 @@ export class GameScene extends Phaser.Scene {
         
         // Trigger hit effect if we took damage
         if (previousHealth > this.currentHealth && this.currentHealth > 0) {
-          this.createHitEffect(this.player.x, this.player.y);
+          this.effectsSystem.createHitEffect(this.player.x, this.player.y);
           this.soundManager.playHit();
         }
       }
@@ -559,7 +544,7 @@ export class GameScene extends Phaser.Scene {
           this.player.setAlpha(0.3);
           this.player.setVelocity(0, 0);
           const team = this.networkManager?.getPlayerTeam() || "red";
-          this.createDeathEffect(this.player.x, this.player.y, team);
+          this.effectsSystem.createDeathEffect(this.player.x, this.player.y, team);
           this.soundManager.playDeath();
         } else if (!this.isDead && wasDead) {
           // Player respawned
@@ -645,98 +630,7 @@ export class GameScene extends Phaser.Scene {
 
 
   
-  createHitEffect(x: number, y: number) {
-    // Create a burst of red particles for hit effect
-    const particleCount = 5;
-    
-    for (let i = 0; i < particleCount; i++) {
-      const particle = this.add.circle(x, y, 3, COLORS.EFFECTS.HIT);
-      
-      // Random direction
-      const angle = (Math.PI * 2 * i) / particleCount + Math.random() * 0.5;
-      const speed = 100 + Math.random() * 100;
-      
-      // Animate particle
-      this.tweens.add({
-        targets: particle,
-        x: x + Math.cos(angle) * speed,
-        y: y + Math.sin(angle) * speed,
-        alpha: 0,
-        scale: 0.5,
-        duration: 500,
-        ease: 'Power2',
-        onComplete: () => particle.destroy()
-      });
-    }
-    
-    // Flash the screen slightly
-    this.cameras.main.flash(100, 255, 0, 0, false);
-  }
-  
-  createDeathEffect(x: number, y: number, team: string) {
-    // Create a burst of team-colored particles
-    const teamColors = getTeamColors(team as 'red' | 'blue');
-    const teamColor = teamColors.GLOW;
-    const particleCount = 15;
-    
-    for (let i = 0; i < particleCount; i++) {
-      const particle = this.add.circle(x, y, 4, teamColor);
-      
-      // Random direction
-      const angle = (Math.PI * 2 * i) / particleCount + Math.random() * 0.3;
-      const speed = 150 + Math.random() * 150;
-      
-      // Animate particle
-      this.tweens.add({
-        targets: particle,
-        x: x + Math.cos(angle) * speed,
-        y: y + Math.sin(angle) * speed,
-        alpha: 0,
-        scale: 0.2,
-        duration: 800,
-        ease: 'Power3',
-        onComplete: () => particle.destroy()
-      });
-    }
-    
-    // Create expanding ring effect
-    const ring = this.add.circle(x, y, 10, teamColor, 0);
-    ring.setStrokeStyle(3, teamColor);
-    
-    this.tweens.add({
-      targets: ring,
-      scale: 4,
-      alpha: 0,
-      duration: 600,
-      ease: 'Power2',
-      onComplete: () => ring.destroy()
-    });
-  }
-  
-  createBulletImpactEffect(x: number, y: number) {
-    // Create small particle burst for bullet impact
-    const particleCount = 3;
-    
-    for (let i = 0; i < particleCount; i++) {
-      const particle = this.add.circle(x, y, 2, COLORS.EFFECTS.BULLET_IMPACT);
-      
-      // Random direction
-      const angle = (Math.PI * 2 * i) / particleCount + Math.random() * 0.5;
-      const speed = 50 + Math.random() * 50;
-      
-      // Animate particle
-      this.tweens.add({
-        targets: particle,
-        x: x + Math.cos(angle) * speed,
-        y: y + Math.sin(angle) * speed,
-        alpha: 0,
-        scale: 0.5,
-        duration: 300,
-        ease: 'Power2',
-        onComplete: () => particle.destroy()
-      });
-    }
-  }
+
   
   leaveMultiplayer() {
     if (this.networkManager) {
