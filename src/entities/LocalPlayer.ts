@@ -25,11 +25,14 @@ export class LocalPlayer extends BasePlayer {
   private dashBuffering: boolean = false;
   private dashBufferTime: number = 0;
   
+  // Dash direction buffering
+  private dashDirectionBuffering: boolean = false;
+  private dashDirectionBufferTime: number = 0;
+  private dashDirectionInputDetected: boolean = false;
+  private dashDirectionInputTime: number = 0;
+  
   // Events
   public events: Phaser.Events.EventEmitter;
-  
-  // Previous jump state for edge detection
-  private wasJumpPressed: boolean = false;
   
   // Shooting cooldown
   private lastShootTime: number = 0;
@@ -137,11 +140,71 @@ export class LocalPlayer extends BasePlayer {
       velocityY: body.velocity.y,
       flipX: this.flipX
     });
+    
+    // Update dash button state for edge detection (must be after dash handling)
+    this.movementState.wasDashPressed = input.dash;
   }
   
   private handleDashBuffering(body: Phaser.Physics.Arcade.Body, input: MovementInput, delta: number): void {
-    // Start buffering on dash press
-    if (input.dash && !this.dashBuffering && !this.movementState.canDash) {
+    // Handle dash direction buffering (wait for directional input after S is pressed)
+    // Only start on rising edge of dash key (key press, not hold)
+    if (input.dash && !this.movementState.wasDashPressed && !this.dashDirectionBuffering && !this.movementState.isDashing && this.movementState.canDash) {
+      // Start direction buffer when dash is pressed and we can dash
+      this.dashDirectionBuffering = true;
+      this.dashDirectionBufferTime = 0;
+      this.dashDirectionInputDetected = false;
+      this.dashDirectionInputTime = 0;
+      // Don't update wasDashPressed here - let MovementSystem handle it
+      return; // Don't execute dash immediately
+    }
+    
+    // Update direction buffer timer
+    if (this.dashDirectionBuffering) {
+      this.dashDirectionBufferTime += delta;
+      
+      // Check if we have directional input
+      const hasDirectionalInput = input.left || input.right || input.up || input.down;
+      
+      // If we detect first directional input, start a small additional buffer
+      if (hasDirectionalInput && !this.dashDirectionInputDetected) {
+        this.dashDirectionInputDetected = true;
+        this.dashDirectionInputTime = 0;
+      }
+      
+      // Update input detection timer
+      if (this.dashDirectionInputDetected) {
+        this.dashDirectionInputTime += delta;
+      }
+      
+      // Execute dash if:
+      // 1. We have directional input AND additional input buffer has expired
+      // 2. OR main buffer has expired
+      // 3. OR dash key is released with directional input
+      const inputBufferExpired = this.dashDirectionInputDetected && this.dashDirectionInputTime >= GAME_CONFIG.PLAYER.DASH.DIAGONAL_WINDOW_MS;
+      const mainBufferExpired = this.dashDirectionBufferTime >= GAME_CONFIG.PLAYER.DASH.DIRECTION_BUFFER_MS;
+      const dashReleased = !input.dash && hasDirectionalInput;
+      
+      if (inputBufferExpired || mainBufferExpired || dashReleased) {
+        // Execute dash with current input
+        if (this.movementSystem.startDash(body, input, this.movementState, this.dashState)) {
+          this.events.emit('dash-start');
+        }
+        this.dashDirectionBuffering = false;
+        this.dashDirectionInputDetected = false;
+      }
+      
+      // Cancel if dash key is released without direction
+      if (!input.dash && !hasDirectionalInput) {
+        this.dashDirectionBuffering = false;
+        this.dashDirectionInputDetected = false;
+      }
+      
+      return; // Don't process other dash logic while buffering
+    }
+    
+    // Original dash execution buffering (for when we can't dash yet)
+    // Also needs edge detection
+    if (input.dash && !this.movementState.wasDashPressed && !this.dashBuffering && !this.movementState.canDash) {
       this.dashBuffering = true;
       this.dashBufferTime = 0;
     }
@@ -157,24 +220,19 @@ export class LocalPlayer extends BasePlayer {
       
       // Execute buffered dash when possible
       if (this.movementState.canDash) {
-        if (this.movementSystem.startDash(body, input, this.movementState, this.dashState)) {
-          this.events.emit('dash-start');
-          this.dashBuffering = false;
-        }
-      }
-    }
-    
-    // Normal dash execution (no buffering)
-    if (input.dash && this.movementState.canDash && !this.dashBuffering) {
-      if (this.movementSystem.startDash(body, input, this.movementState, this.dashState)) {
-        this.events.emit('dash-start');
+        // Use direction buffering for buffered dashes too
+        this.dashBuffering = false;
+        this.dashDirectionBuffering = true;
+        this.dashDirectionBufferTime = 0;
+        this.dashDirectionInputDetected = false;
+        this.dashDirectionInputTime = 0;
       }
     }
   }
   
   private detectStateChanges(input: MovementInput): void {
-    // Jump events
-    if (input.jump && !this.wasJumpPressed && this.movementState.isGrounded) {
+    // Jump events - emit when we actually jump (rising edge + grounded)
+    if (input.jump && !this.movementState.wasJumpPressed && this.movementState.isGrounded) {
       this.events.emit('jump');
     }
     
@@ -195,9 +253,6 @@ export class LocalPlayer extends BasePlayer {
       this.wasDashing = true;
       this._isDashing = true; // Sync local flag
     }
-    
-    // Track jump button state
-    this.wasJumpPressed = input.jump;
   }
   
   private handleShooting(): void {
@@ -228,7 +283,6 @@ export class LocalPlayer extends BasePlayer {
     this.wasDashing = false;
     this.dashBuffering = false;
     this.wasGrounded = true;
-    this.wasJumpPressed = false;
     this.lastShootTime = 0;
     
     // Clear any animations (only if controller exists - may be called during construction)

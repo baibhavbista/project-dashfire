@@ -25,6 +25,8 @@ export interface MovementState {
   dashCooldown: number;
   coyoteTime: number;
   facingDirection: number; // 1 for right, -1 for left
+  wasJumpPressed: boolean; // For edge detection
+  wasDashPressed: boolean; // For edge detection
 }
 
 /**
@@ -156,7 +158,8 @@ export class MovementSystem {
   ): void {
     const canJump = state.isGrounded || state.coyoteTime > 0;
     
-    if (input.jump && canJump && !state.isJumping) {
+    // Only jump on the rising edge of the jump input (key press, not hold)
+    if (input.jump && !state.wasJumpPressed && canJump && !state.isJumping) {
       body.setVelocityY(-GAME_CONFIG.PLAYER.JUMP_POWER);
       state.coyoteTime = 0;
       state.isJumping = true;
@@ -166,6 +169,9 @@ export class MovementSystem {
     if (state.isGrounded) {
       state.isJumping = false;
     }
+    
+    // Track jump button state for edge detection
+    state.wasJumpPressed = input.jump;
   }
   
   /**
@@ -345,7 +351,9 @@ export class MovementSystem {
       canDash: true,
       dashCooldown: 0,
       coyoteTime: 0,
-      facingDirection: 1
+      facingDirection: 1,
+      wasJumpPressed: false,
+      wasDashPressed: false
     };
   }
   

@@ -57,12 +57,20 @@ export class MovementController {
     
     // Detect state changes and fire events
     this.detectStateChanges();
+    
+    // Update dash button state for edge detection (must be after dash handling)
+    this.movementState.wasDashPressed = input.dash;
   }
   
   /**
    * Try to start a dash
    */
   public tryDash(body: Phaser.Physics.Arcade.Body, input: MovementInput): boolean {
+    // Only dash on rising edge of dash input
+    if (!input.dash || this.movementState.wasDashPressed) {
+      return false;
+    }
+    
     const started = this.movementSystem.startDash(body, input, this.movementState, this.dashState);
     
     if (started && this.events.onDashStart) {
