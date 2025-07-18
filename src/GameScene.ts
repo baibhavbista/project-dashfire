@@ -8,6 +8,8 @@ import { NetworkManager, PlayerData, BulletData } from './network/NetworkManager
 import { ARENA_WIDTH, ARENA_HEIGHT, MAIN_PLATFORM, ELEVATED_PLATFORMS } from '../shared/WorldGeometry';
 import { COLORS, getTeamColors } from './config/Colors';
 import { GAME_CONFIG, getSpawnPosition, Team } from './config/GameConfig';
+import { GameHUD } from './ui/GameHUD';
+import { KillFeed } from './ui/KillFeed';
 
 // Team colors now imported from config/Colors.ts
 
@@ -21,7 +23,10 @@ export class GameScene extends Phaser.Scene {
   private remotePlayers: Map<string, RemotePlayer> = new Map();
   private isMultiplayer: boolean = false;
   private localPlayerId?: string;
-  private multiplayerUI?: Phaser.GameObjects.Container;
+  
+  // UI managers
+  private gameHUD!: GameHUD;
+  private killFeed!: KillFeed;
 
   // Client-side prediction
   private lastServerPosition: { x: number; y: number } = { x: 0, y: 0 };
@@ -29,20 +34,9 @@ export class GameScene extends Phaser.Scene {
   private reconciliationSpeed: number = 0.3; // How fast to correct prediction errors
   private debugText?: Phaser.GameObjects.Text;
   
-  // Health UI
-  private healthBar?: Phaser.GameObjects.Rectangle;
-  private healthBarBg?: Phaser.GameObjects.Rectangle;
-  private healthText?: Phaser.GameObjects.Text;
+  // Game state
   private currentHealth: number = GAME_CONFIG.PLAYER.HEALTH.MAX;
   private isDead: boolean = false;
-  private respawnTimer?: Phaser.GameObjects.Text;
-  
-  // Kill feed
-  private killFeedContainer?: Phaser.GameObjects.Container;
-  private killFeedMessages: Phaser.GameObjects.Text[] = [];
-  
-  // Team scores
-  private scoreText?: Phaser.GameObjects.Text;
   private redScore: number = 0;
   private blueScore: number = 0;
 
@@ -212,6 +206,10 @@ export class GameScene extends Phaser.Scene {
     
     // Initialize sound manager
     this.soundManager = new SoundManager(this);
+    
+    // Initialize UI managers
+    this.gameHUD = new GameHUD(this);
+    this.killFeed = new KillFeed(this);
     
     // Set up bullet-platform collisions
     const bullets = this.weaponSystem.getBulletPool().getBullets();
@@ -517,7 +515,7 @@ export class GameScene extends Phaser.Scene {
       if (state.scores) {
         this.redScore = state.scores.red;
         this.blueScore = state.scores.blue;
-        this.updateScoreDisplay();
+        this.gameHUD.updateScores(this.redScore, this.blueScore);
       }
     });
     
@@ -526,7 +524,7 @@ export class GameScene extends Phaser.Scene {
       // Add to kill feed
       const killerName = data.killerName || "Player";
       const victimName = data.victimName || "Player";
-      this.addKillFeedMessage(killerName, victimName);
+      this.killFeed.addKillMessage(killerName, victimName);
       
       // Play death sound if it's the local player
       if (data.victimId === this.localPlayerId) {
@@ -542,7 +540,7 @@ export class GameScene extends Phaser.Scene {
       if (serverData.health !== undefined) {
         const previousHealth = this.currentHealth;
         this.currentHealth = serverData.health;
-        this.updateHealthUI();
+        this.gameHUD.updateHealth(this.currentHealth);
         
         // Trigger hit effect if we took damage
         if (previousHealth > this.currentHealth && this.currentHealth > 0) {
@@ -566,19 +564,14 @@ export class GameScene extends Phaser.Scene {
         } else if (!this.isDead && wasDead) {
           // Player respawned
           this.player.setAlpha(1);
-          this.respawnTimer?.setVisible(false);
+          this.gameHUD.setRespawnTimer(0);
         }
       }
       
       // Update respawn timer
-      if (this.isDead && serverData.respawnTimer !== undefined && this.respawnTimer) {
+      if (this.isDead && serverData.respawnTimer !== undefined) {
         const seconds = Math.ceil(serverData.respawnTimer / 1000);
-        if (seconds > 0) {
-          this.respawnTimer.setText(`Respawning in ${seconds}...`);
-          this.respawnTimer.setVisible(true);
-        } else {
-          this.respawnTimer.setVisible(false);
-        }
+        this.gameHUD.setRespawnTimer(seconds);
       }
     });
     
@@ -635,76 +628,11 @@ export class GameScene extends Phaser.Scene {
   }
   
   createMultiplayerUI() {
-    // Create UI container
-    this.multiplayerUI = this.add.container(0, 0);
-    this.multiplayerUI.setScrollFactor(0);
+    // Get team
+    const team = this.networkManager?.getPlayerTeam() || 'unknown';
     
-    // Minimal dark background for team info
-    const bg = this.add.rectangle(
-      GAME_CONFIG.UI.TEAM_INDICATOR.POSITION.x, 
-      GAME_CONFIG.UI.TEAM_INDICATOR.POSITION.y, 
-      GAME_CONFIG.UI.TEAM_INDICATOR.BG_SIZE.width, 
-      GAME_CONFIG.UI.TEAM_INDICATOR.BG_SIZE.height, 
-      COLORS.UI.UI_BG, 
-      COLORS.UI.UI_BG_ALPHA
-    );
-    
-    // Team indicator
-    const team = this.networkManager?.getPlayerTeam();
-    const teamColor = team === "red" ? "#E74C3C" : team === "blue" ? "#3498DB" : "#ffffff";
-    const teamText = this.add.text(
-      GAME_CONFIG.UI.TEAM_INDICATOR.POSITION.x, 
-      GAME_CONFIG.UI.TEAM_INDICATOR.POSITION.y - 10, 
-      `Team: ${team?.toUpperCase() || 'Unknown'}`, 
-      {
-      fontSize: '16px',
-      color: teamColor,
-      fontFamily: 'Arial, sans-serif'
-    }).setOrigin(0.5);
-    
-    // Leave button - subtle style
-    const leaveBtn = this.add.text(512, 40, '[Leave Game]', {
-      fontSize: '14px',
-      color: '#999999',
-      fontFamily: 'Arial, sans-serif'
-    }).setOrigin(0.5)
-      .setInteractive()
-      .on('pointerover', () => leaveBtn.setColor('#ffffff'))
-      .on('pointerout', () => leaveBtn.setColor('#999999'))
-      .on('pointerdown', () => {
-        this.leaveMultiplayer();
-      });
-    
-    this.multiplayerUI.add([bg, teamText, leaveBtn]);
-    
-    // Create team score display - minimalist style
-    this.scoreText = this.add.text(512, 80, 'Red: 0 | Blue: 0', {
-      fontSize: '20px',
-      color: '#ffffff',
-      fontFamily: 'Arial, sans-serif'
-    });
-    this.scoreText.setOrigin(0.5);
-    this.scoreText.setScrollFactor(0);
-    
-    // Create health bar UI in top-left
-    this.createHealthUI();
-    
-    // Create debug display (F3 to toggle)
-    this.debugText = this.add.text(10, 100, '', {
-      fontSize: '12px',
-      color: '#00ff00',
-      backgroundColor: '#000000',
-      padding: { x: 5, y: 5 }
-    });
-    this.debugText.setScrollFactor(0);
-    this.debugText.setVisible(false);
-    
-    // Toggle debug with F3
-    this.input.keyboard?.on('keydown-F3', () => {
-      if (this.debugText) {
-        this.debugText.setVisible(!this.debugText.visible);
-      }
-    });
+    // Create multiplayer-specific UI elements
+    this.gameHUD.createMultiplayerUI(team, () => this.leaveMultiplayer());
     
     // Toggle network quality visualization with F4
     this.input.keyboard?.on('keydown-F4', () => {
@@ -713,121 +641,9 @@ export class GameScene extends Phaser.Scene {
         indicator.setVisible(this.showNetworkQuality);
       });
     });
-    
-
-  }
-  
-  createHealthUI() {
-    // Minimalist health bar - no borders
-    this.healthBarBg = this.add.rectangle(20, 20, 200, 8, COLORS.UI.HEALTH_BG);
-    this.healthBarBg.setOrigin(0, 0);
-    this.healthBarBg.setScrollFactor(0);
-    
-    // Health bar fill - gradient from green to red based on health
-    this.healthBar = this.add.rectangle(20, 20, 200, 8, COLORS.UI.HEALTH_GOOD);
-    this.healthBar.setOrigin(0, 0);
-    this.healthBar.setScrollFactor(0);
-    
-    // Health text - clean typography
-    this.healthText = this.add.text(120, 28, '100', {
-      fontSize: '16px',
-      color: '#ffffff',
-      fontFamily: 'Arial, sans-serif'
-    });
-    this.healthText.setOrigin(0.5);
-    this.healthText.setScrollFactor(0);
-    
-    // Respawn timer - minimal style
-    this.respawnTimer = this.add.text(512, 300, '', {
-      fontSize: '28px',
-      color: '#ffffff',
-      fontFamily: 'Arial, sans-serif'
-    });
-    this.respawnTimer.setOrigin(0.5);
-    this.respawnTimer.setScrollFactor(0);
-    this.respawnTimer.setVisible(false);
-    
-    // Create kill feed container
-    this.killFeedContainer = this.add.container(1014, 600);
-    this.killFeedContainer.setScrollFactor(0);
-  }
-  
-  addKillFeedMessage(killerName: string, victimName: string) {
-    if (!this.killFeedContainer) return;
-    
-    // Create kill message
-    const message = this.add.text(0, 0, `${killerName} eliminated ${victimName}`, {
-      fontSize: '14px',
-      color: '#ffffff',
-      backgroundColor: '#000000',
-      padding: { x: 8, y: 4 }
-    });
-    message.setOrigin(1, 0);
-    message.setAlpha(0.9);
-    
-    // Position message
-    const yOffset = this.killFeedMessages.length * 25;
-    message.setY(-yOffset);
-    
-    this.killFeedContainer.add(message);
-    this.killFeedMessages.push(message);
-    
-    // Fade out and remove after 5 seconds
-    this.tweens.add({
-      targets: message,
-      alpha: 0,
-      delay: 5000,
-      duration: 500,
-      onComplete: () => {
-        const index = this.killFeedMessages.indexOf(message);
-        if (index > -1) {
-          this.killFeedMessages.splice(index, 1);
-          message.destroy();
-          
-          // Reposition remaining messages
-          this.killFeedMessages.forEach((msg, i) => {
-            this.tweens.add({
-              targets: msg,
-              y: -i * 25,
-              duration: 200
-            });
-          });
-        }
-      }
-    });
-    
-    // Limit to 5 messages
-    if (this.killFeedMessages.length > 5) {
-      const oldestMessage = this.killFeedMessages.shift();
-      oldestMessage?.destroy();
-    }
-  }
-  
-  updateHealthUI() {
-    if (!this.healthBar || !this.healthText) return;
-    
-    // Update bar width
-    const healthPercent = this.currentHealth / 100;
-    this.healthBar.setDisplaySize(200 * healthPercent, 8);
-    
-    // Update bar color based on health
-    if (healthPercent > 0.6) {
-      this.healthBar.setFillStyle(COLORS.UI.HEALTH_GOOD);
-    } else if (healthPercent > 0.3) {
-      this.healthBar.setFillStyle(COLORS.UI.HEALTH_WARNING);
-    } else {
-      this.healthBar.setFillStyle(COLORS.UI.HEALTH_CRITICAL);
-    }
-    
-    // Update text
-    this.healthText.setText(`${Math.max(0, Math.round(this.currentHealth))}`);
   }
 
-  updateScoreDisplay() {
-    if (this.scoreText) {
-      this.scoreText.setText(`Red: ${this.redScore} | Blue: ${this.blueScore}`);
-    }
-  }
+
   
   createHitEffect(x: number, y: number) {
     // Create a burst of red particles for hit effect
@@ -940,8 +756,8 @@ export class GameScene extends Phaser.Scene {
     this.player.setTexture('red-player');
     
     // Destroy multiplayer UI
-    this.multiplayerUI?.destroy();
-    this.multiplayerUI = undefined;
+    this.gameHUD.destroy();
+    this.killFeed.destroy();
     
     // Hide debug text
     this.debugText?.setVisible(false);
@@ -989,10 +805,10 @@ export class GameScene extends Phaser.Scene {
     }
     
     // Update debug text
-    if (this.debugText && this.debugText.visible) {
+    if (this.gameHUD.isDebugVisible()) {
       const playerBody = this.player.body as Phaser.Physics.Arcade.Body;
       const errorMag = Math.sqrt(this.predictionError.x * this.predictionError.x + this.predictionError.y * this.predictionError.y);
-      this.debugText.setText([
+      this.gameHUD.updateDebugText([
         `Network Debug (F3 to hide)`,
         `Player ID: ${this.localPlayerId}`,
         `Position: ${Math.round(this.player.x)}, ${Math.round(this.player.y)}`,
@@ -1001,7 +817,7 @@ export class GameScene extends Phaser.Scene {
         `Dash State: ${this.player.isDashing ? 'DASHING' : 'Ready'}`, // TODO: Fix getDashCooldown
         `Remote Players: ${this.remotePlayers.size}`,
         `FPS: ${Math.round(this.game.loop.actualFps)}`
-      ].join('\n'));
+      ]);
     }
   }
 
