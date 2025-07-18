@@ -4,26 +4,21 @@ import { BulletPool } from './BulletPool';
 export class WeaponSystem {
   private scene: Phaser.Scene;
   private player: Phaser.Physics.Arcade.Sprite;
-  private gun: Phaser.GameObjects.Rectangle;
   private bulletPool: BulletPool;
   private muzzleFlash?: Phaser.GameObjects.Arc;
   
   private canShoot: boolean = true;
   private shootCooldown: number = 0;
   private readonly SHOOT_COOLDOWN_MS: number = 200;
-  private readonly GUN_LENGTH: number = 24;
-  private readonly GUN_WIDTH: number = 3;
-  private readonly GUN_OFFSET_X: number = 8; // Offset from player center
-  private readonly GUN_OFFSET_Y: number = -24; // Height offset (adjusted for bottom-center origin)
+  // Gun is now integrated into sprite, these define where bullets spawn
+  private readonly GUN_LENGTH: number = 20;
+  private readonly GUN_OFFSET_X: number = 24; // From player center to gun tip (texture is 48px wide, center at 24px, gun tip at 48px)
+  private readonly GUN_OFFSET_Y: number = -32; // Vertical offset to gun (from bottom of sprite)
 
   constructor(scene: Phaser.Scene, player: Phaser.Physics.Arcade.Sprite) {
     this.scene = scene;
     this.player = player;
     this.bulletPool = new BulletPool(scene);
-    
-    // Create gun visual
-    this.gun = scene.add.rectangle(0, 0, this.GUN_LENGTH, this.GUN_WIDTH, 0x666666);
-    this.gun.setOrigin(0, 0.5); // Origin at the left/base of gun
     
     // Create muzzle flash (initially hidden)
     this.muzzleFlash = scene.add.arc(0, 0, 8, 0, 360, false, 0xFFFFFF, 0.8);
@@ -39,27 +34,8 @@ export class WeaponSystem {
       }
     }
 
-    // Update gun position to follow player
-    this.updateGunPosition();
-
     // Update bullet pool
     this.bulletPool.update();
-  }
-
-  private updateGunPosition(): void {
-    // Position gun relative to player
-    const direction = this.player.flipX ? -1 : 1;
-    const gunX = this.player.x + (this.GUN_OFFSET_X * direction);
-    const gunY = this.player.y + this.GUN_OFFSET_Y;
-    
-    this.gun.setPosition(gunX, gunY);
-    
-    // Flip gun based on player direction
-    if (this.player.flipX) {
-      this.gun.setScale(-1, 1);
-    } else {
-      this.gun.setScale(1, 1);
-    }
   }
 
   shoot(isPlayerDashing: boolean, teamColor?: number): boolean {
@@ -70,9 +46,11 @@ export class WeaponSystem {
 
     const direction = this.player.flipX ? -1 : 1;
     
-    // Calculate bullet spawn position (at gun tip)
-    const bulletX = this.gun.x + (this.GUN_LENGTH * direction * 0.9);
-    const bulletY = this.gun.y;
+    // Calculate bullet spawn position from integrated gun
+    const bulletX = this.player.flipX 
+      ? this.player.x - this.GUN_OFFSET_X  // Gun on left when flipped
+      : this.player.x + this.GUN_OFFSET_X; // Gun on right normally
+    const bulletY = this.player.y + this.GUN_OFFSET_Y;
     
     // Fire bullet with team color
     const bulletColor = teamColor || 0xFF6B6B; // Default to red glow if no team color
@@ -116,14 +94,8 @@ export class WeaponSystem {
     return this.bulletPool;
   }
 
-  // Set gun visibility
-  setVisible(visible: boolean): void {
-    this.gun.setVisible(visible);
-  }
-
   // Cleanup
   destroy(): void {
-    this.gun.destroy();
     this.muzzleFlash?.destroy();
     // Note: BulletPool bullets will be cleaned up by Phaser scene destruction
   }

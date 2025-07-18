@@ -51,9 +51,21 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
     // Ensure texture exists, if not create it
     if (!scene.textures.exists(textureKey)) {
       const graphics = scene.add.graphics();
+      
+      // Draw player body
       graphics.fillStyle(teamColors.PRIMARY, 1);
       graphics.fillRect(0, 0, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
-      graphics.generateTexture(textureKey, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
+      
+      // Draw integrated gun on the right side
+      graphics.fillStyle(0x666666, 1); // Gun color
+      const gunWidth = 20;
+      const gunHeight = 4;
+      const gunX = GAME_CONFIG.PLAYER.WIDTH - 4; // Right edge of player
+      const gunY = GAME_CONFIG.PLAYER.HEIGHT / 2 - 8; // Middle-ish of player
+      graphics.fillRect(gunX, gunY, gunWidth, gunHeight);
+      
+      // Generate texture with increased width to accommodate gun
+      graphics.generateTexture(textureKey, GAME_CONFIG.PLAYER.WIDTH + gunWidth - 4, GAME_CONFIG.PLAYER.HEIGHT);
       graphics.destroy();
     }
     
@@ -75,9 +87,10 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
     this.setOrigin(0.5, 1); // Bottom-center origin for proper animations
     this.setBounce(GAME_CONFIG.PLAYER.BOUNCE);
     
-    // Configure physics body
+    // Configure physics body - keep original size, gun is just visual
     const body = this.body as Phaser.Physics.Arcade.Body;
     body.setSize(GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
+    body.setOffset(0, 0); // Body stays aligned with player rectangle, not gun
     
     // Create visual components
     // this.createDirectionIndicator(); // Removed direction indicator

@@ -30,9 +30,6 @@ export class RemotePlayer extends BasePlayer {
   private jumpPredictionThreshold: number = GAME_CONFIG.NETWORK.PREDICTION.JUMP_VELOCITY_THRESHOLD;
   private landingPredictionWindow: number = GAME_CONFIG.NETWORK.PREDICTION.LANDING_TIME_WINDOW;
   
-  // Gun visual (not in BasePlayer)
-  private gun?: Phaser.GameObjects.Rectangle;
-  
   constructor(
     scene: Phaser.Scene, 
     id: string, 
@@ -52,22 +49,6 @@ export class RemotePlayer extends BasePlayer {
     const body = this.body as Phaser.Physics.Arcade.Body;
     body.setAllowGravity(false);
     body.setImmovable(true);
-    
-    // Create gun visual
-    this.createGun();
-  }
-  
-  private createGun(): void {
-    const gunLength = 20;
-    const gunWidth = 6;
-    this.gun = this.scene.add.rectangle(
-      this.x + 8,
-      this.y - 24,
-      gunLength,
-      gunWidth,
-      0x555555
-    );
-    this.gun.setOrigin(0, 0.5);
   }
   
   public updateFromServer(
@@ -134,15 +115,7 @@ export class RemotePlayer extends BasePlayer {
     this.updateHealth(health);
     this.setDead(isDead);
     
-    // Update gun position
-    if (this.gun) {
-      const direction = flipX ? -1 : 1;
-      const gunX = this.x + (8 * direction);
-      const gunY = this.y - 24;
-      this.gun.setPosition(gunX, gunY);
-      this.gun.setScale(direction, 1);
-      this.gun.setVisible(!isDead);
-    }
+    // Gun is now integrated into player sprite
     
     // Handle dash state
     if (isDashing && !this.wasDashing) {
@@ -243,9 +216,6 @@ export class RemotePlayer extends BasePlayer {
    * Clean up resources
    */
   public destroy(fromScene?: boolean): void {
-    if (this.gun) {
-      this.gun.destroy();
-    }
     super.destroy(fromScene);
   }
 } 

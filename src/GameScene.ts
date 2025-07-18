@@ -163,9 +163,21 @@ export class GameScene extends Phaser.Scene {
       const neutralKey = 'neutral-player';
       if (!this.textures.exists(neutralKey)) {
         const graphics = this.add.graphics();
+        
+        // Draw player body
         graphics.fillStyle(0x888888, 1); // Gray color for unassigned
         graphics.fillRect(0, 0, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
-        graphics.generateTexture(neutralKey, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
+        
+        // Draw integrated gun on the right side
+        graphics.fillStyle(0x666666, 1); // Gun color
+        const gunWidth = 20;
+        const gunHeight = 4;
+        const gunX = GAME_CONFIG.PLAYER.WIDTH - 4; // Right edge of player
+        const gunY = GAME_CONFIG.PLAYER.HEIGHT / 2 - 8; // Middle-ish of player
+        graphics.fillRect(gunX, gunY, gunWidth, gunHeight);
+        
+        // Generate texture with increased width to accommodate gun
+        graphics.generateTexture(neutralKey, GAME_CONFIG.PLAYER.WIDTH + gunWidth - 4, GAME_CONFIG.PLAYER.HEIGHT);
         graphics.destroy();
       }
     }
@@ -272,8 +284,11 @@ export class GameScene extends Phaser.Scene {
         
         // Send shoot to server if multiplayer
         if (this.isMultiplayer && this.networkManager) {
-          const bulletX = data.x + (24 * data.direction * 0.9);
-          const bulletY = data.y;
+          // Gun is integrated into sprite
+          const bulletX = data.direction < 0 
+            ? data.x - 24  // Gun on left when flipped (gun tip at 24px from center)
+            : data.x + 24; // Gun on right when not flipped (gun tip at 24px from center)
+          const bulletY = data.y - 32; // Gun Y offset (from bottom of sprite)
           const bulletVelocityX = GAME_CONFIG.WEAPON.BULLET_SPEED * data.direction;
           
           this.networkManager.sendShoot({
@@ -389,15 +404,26 @@ export class GameScene extends Phaser.Scene {
       
       // Always recreate the texture to ensure it's fresh
       const graphics = this.add.graphics();
+      
+      // Draw player body
       graphics.fillStyle(teamColors.PRIMARY, 1);
       graphics.fillRect(0, 0, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
+      
+      // Draw integrated gun on the right side
+      graphics.fillStyle(0x666666, 1); // Gun color
+      const gunWidth = 20;
+      const gunHeight = 4;
+      const gunX = GAME_CONFIG.PLAYER.WIDTH - 4; // Right edge of player
+      const gunY = GAME_CONFIG.PLAYER.HEIGHT / 2 - 8; // Middle-ish of player
+      graphics.fillRect(gunX, gunY, gunWidth, gunHeight);
       
       // If texture exists, remove it first
       if (this.textures.exists(textureKey)) {
         this.textures.remove(textureKey);
       }
       
-      graphics.generateTexture(textureKey, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
+      // Generate texture with increased width to accommodate gun
+      graphics.generateTexture(textureKey, GAME_CONFIG.PLAYER.WIDTH + gunWidth - 4, GAME_CONFIG.PLAYER.HEIGHT);
       graphics.destroy();
       
       // Force texture update
@@ -584,15 +610,26 @@ export class GameScene extends Phaser.Scene {
       
       // Always recreate the texture to ensure it's fresh
       const graphics = this.add.graphics();
+      
+      // Draw player body
       graphics.fillStyle(teamColors.PRIMARY, 1);
       graphics.fillRect(0, 0, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
+      
+      // Draw integrated gun on the right side
+      graphics.fillStyle(0x666666, 1); // Gun color
+      const gunWidth = 20;
+      const gunHeight = 4;
+      const gunX = GAME_CONFIG.PLAYER.WIDTH - 4; // Right edge of player
+      const gunY = GAME_CONFIG.PLAYER.HEIGHT / 2 - 8; // Middle-ish of player
+      graphics.fillRect(gunX, gunY, gunWidth, gunHeight);
       
       // If texture exists, remove it first
       if (this.textures.exists(textureKey)) {
         this.textures.remove(textureKey);
       }
       
-      graphics.generateTexture(textureKey, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
+      // Generate texture with increased width to accommodate gun
+      graphics.generateTexture(textureKey, GAME_CONFIG.PLAYER.WIDTH + gunWidth - 4, GAME_CONFIG.PLAYER.HEIGHT);
       graphics.destroy();
       
       // Force texture update
@@ -646,8 +683,33 @@ export class GameScene extends Phaser.Scene {
     this.isMultiplayer = false;
     this.localPlayerId = undefined;
     
-    // Reset player to default red texture
-    this.player.setTexture('red-player');
+    // Reset player to red team and texture
+    this.player.team = 'red';
+    const textureKey = 'red-player';
+    
+    // Ensure red texture exists with gun
+    if (!this.textures.exists(textureKey)) {
+      const teamColors = getTeamColors('red');
+      const graphics = this.add.graphics();
+      
+      // Draw player body
+      graphics.fillStyle(teamColors.PRIMARY, 1);
+      graphics.fillRect(0, 0, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
+      
+      // Draw integrated gun on the right side
+      graphics.fillStyle(0x666666, 1); // Gun color
+      const gunWidth = 20;
+      const gunHeight = 4;
+      const gunX = GAME_CONFIG.PLAYER.WIDTH - 4; // Right edge of player
+      const gunY = GAME_CONFIG.PLAYER.HEIGHT / 2 - 8; // Middle-ish of player
+      graphics.fillRect(gunX, gunY, gunWidth, gunHeight);
+      
+      // Generate texture with increased width to accommodate gun
+      graphics.generateTexture(textureKey, GAME_CONFIG.PLAYER.WIDTH + gunWidth - 4, GAME_CONFIG.PLAYER.HEIGHT);
+      graphics.destroy();
+    }
+    
+    this.player.setTexture(textureKey);
     
     // Destroy multiplayer UI
     this.gameHUD.destroy();
