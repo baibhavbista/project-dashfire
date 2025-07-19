@@ -44,7 +44,9 @@ function App() {
         </h1>
         <div ref={mountRef} className="border-2 border-gray-300 rounded" />
         <div className="mt-4 text-sm text-gray-600 text-center">
-          <p><strong>Controls:</strong> Arrow Keys to move, D to jump, S to dash (midair only), A or Space to shoot</p>
+          <p><strong>Controls:</strong> Arrow Keys to move, Down to crouch (hides gun), D to jump, S to dash (midair only), A or Space to shoot</p>
+          {/* Comment out debug because don't want the user to see it */}
+          {/* <p><strong>Debug:</strong> Press B to toggle bounding box visualization</p> */}
           <p>Explore the arena and prepare for battle!</p>
         </div>
         <div className="mt-4 text-center">

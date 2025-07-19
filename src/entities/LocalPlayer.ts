@@ -139,13 +139,19 @@ export class LocalPlayer extends BasePlayer {
       this.setFlipX(this.movementState.facingDirection < 0);
     }
     
+    // Update crouch visual
+    if (this.movementState.isCrouching !== this.movementState.wasCrouching) {
+      this.setCrouching(this.movementState.isCrouching);
+    }
+    
     // Update animations through AnimationController
     this.animationController.update(
       body.velocity.x,
       body.velocity.y,
       this.movementState.isGrounded,
       this.movementState.isDashing,  // Use MovementState's isDashing instead
-      delta
+      delta,
+      this.movementState.isCrouching
     );
     
     // Create dash trails while dashing
@@ -275,6 +281,11 @@ export class LocalPlayer extends BasePlayer {
   }
   
   private handleShooting(): void {
+    // Can't shoot while crouching
+    if (this.movementState.isCrouching) {
+      return;
+    }
+    
     if (this.shootKey.isDown || this.shootKeyAlt.isDown) {
       const now = this.scene.time.now;
       if (now - this.lastShootTime >= GAME_CONFIG.WEAPON.FIRE_RATE) {

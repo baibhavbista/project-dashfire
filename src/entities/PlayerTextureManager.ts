@@ -15,8 +15,8 @@ export class PlayerTextureManager {
   /**
    * Get or create a player texture with integrated gun
    */
-  static getPlayerTexture(scene: Phaser.Scene, team: Team | 'neutral'): string {
-    const textureKey = `${team}-player`;
+  static getPlayerTexture(scene: Phaser.Scene, team: Team | 'neutral', includeGun: boolean = true): string {
+    const textureKey = includeGun ? `${team}-player` : `${team}-player-crouch`;
     
     // Return if texture already exists
     if (scene.textures.exists(textureKey)) {
@@ -39,17 +39,19 @@ export class PlayerTextureManager {
     graphics.fillStyle(bodyColor, 1);
     graphics.fillRect(0, 0, GAME_CONFIG.PLAYER.WIDTH, GAME_CONFIG.PLAYER.HEIGHT);
     
-    // Draw integrated gun on the right side
-    graphics.fillStyle(0x666666, 1); // Gun color
-    graphics.fillRect(
-      this.GUN_X_OFFSET, 
-      this.GUN_Y_OFFSET, 
-      this.GUN_WIDTH, 
-      this.GUN_HEIGHT
-    );
+    if (includeGun) {
+      // Draw integrated gun on the right side
+      graphics.fillStyle(0x666666, 1); // Gun color
+      graphics.fillRect(
+        this.GUN_X_OFFSET, 
+        this.GUN_Y_OFFSET, 
+        this.GUN_WIDTH, 
+        this.GUN_HEIGHT
+      );
+    }
     
-    // Generate texture with increased width to accommodate gun
-    const textureWidth = GAME_CONFIG.PLAYER.WIDTH + this.GUN_WIDTH - 2;  // Adjusted overlap for smaller gun
+    // Generate texture with appropriate width
+    const textureWidth = includeGun ? (GAME_CONFIG.PLAYER.WIDTH + this.GUN_WIDTH - 2) : GAME_CONFIG.PLAYER.WIDTH;
     graphics.generateTexture(textureKey, textureWidth, GAME_CONFIG.PLAYER.HEIGHT);
     graphics.destroy();
     

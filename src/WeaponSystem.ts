@@ -37,8 +37,8 @@ export class WeaponSystem {
   }
 
   shoot(teamColor?: number): boolean {
-    // Can't shoot while on cooldown or if player is dashing
-    if (!this.canShoot || this.shootCooldown > 0 || this.player.isDashing) {
+    // Can't shoot while on cooldown, dashing, or crouching
+    if (!this.canShoot || this.shootCooldown > 0 || this.player.isDashing || this.player.isCrouching) {
       return false;
     }
 

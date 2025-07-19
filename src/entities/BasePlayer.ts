@@ -40,6 +40,9 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
   // Dynamic origin for animations
   protected baseOriginX: number = 0.5;
   
+  // Crouch state
+  protected _isCrouching: boolean = false;
+  
   constructor(
     scene: Phaser.Scene, 
     id: string,
@@ -328,6 +331,48 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
    */
   public getTeam(): Team {
     return this.team;
+  }
+  
+  /**
+   * Handle crouch visual updates
+   */
+  public setCrouching(isCrouching: boolean): void {
+    this._isCrouching = isCrouching;
+    
+    if (isCrouching) {
+      // Only update if not already crouching
+      if (Math.abs(this.scaleY - 0.5) > 0.01) {
+        // Switch to crouch texture (no gun)
+        const crouchTexture = PlayerTextureManager.getPlayerTexture(this.scene, this.team, false);
+        this.setTexture(crouchTexture);
+        
+        // Visual crouch - scale down sprite
+        this.setScale(this.scaleX, 0.5);
+        
+        // Update origin for crouch texture (centered since no gun)
+        this.setOrigin(0.5, 1);
+      }
+    } else {
+      // Only update if currently crouching
+      if (Math.abs(this.scaleY - 1) > 0.01) {
+        // Switch back to normal texture (with gun)
+        const normalTexture = PlayerTextureManager.getPlayerTexture(this.scene, this.team, true);
+        this.setTexture(normalTexture);
+        
+        // Restore normal scale
+        this.setScale(this.scaleX, 1);
+        
+        // Restore dynamic origin (accounting for gun)
+        this.updateDynamicOrigin();
+      }
+    }
+  }
+  
+  /**
+   * Get crouch state
+   */
+  public get isCrouching(): boolean {
+    return this._isCrouching;
   }
   
   /**

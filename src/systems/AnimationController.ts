@@ -66,7 +66,8 @@ export class AnimationController {
     velocityY: number,
     isGrounded: boolean,
     isDashing: boolean,
-    delta: number
+    delta: number,
+    isCrouching: boolean = false
   ): void {
     // Check for state changes
     if (!this.wasGrounded && isGrounded) {
@@ -79,6 +80,9 @@ export class AnimationController {
       // Just started dashing
       this.events.onDashTrailCreated?.();
     }
+    
+    // Update crouch state
+    this.animationState.isCrouching = isCrouching;
     
     // Update all animations
     this.animationSystem.updateAnimations(

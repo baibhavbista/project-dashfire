@@ -27,6 +27,8 @@ export interface MovementState {
   facingDirection: number; // 1 for right, -1 for left
   wasJumpPressed: boolean; // For edge detection
   wasDashPressed: boolean; // For edge detection
+  isCrouching: boolean; // For crouch state
+  wasCrouching: boolean; // For crouch edge detection
 }
 
 /**
@@ -69,13 +71,18 @@ export class MovementSystem {
     // Update coyote time
     this.updateCoyoteTime(state, deltaTime);
     
-    // Handle horizontal movement
+    // Handle crouching
+    this.handleCrouching(body, input, state);
+    
+    // Handle horizontal movement (reduced speed when crouching)
     if (!state.isDashing) {
       this.handleHorizontalMovement(body, input, state, deltaTime);
     }
     
-    // Handle jumping
-    this.handleJumping(body, input, state);
+    // Handle jumping (can't jump while crouching)
+    if (!state.isCrouching) {
+      this.handleJumping(body, input, state);
+    }
     
     // Update gravity
     this.updateGravity(body, input, state);
@@ -111,6 +118,27 @@ export class MovementSystem {
   }
   
   /**
+   * Handle crouching
+   */
+  private handleCrouching(
+    body: Phaser.Physics.Arcade.Body,
+    input: MovementInput,
+    state: MovementState
+  ): void {
+    // Store previous crouch state
+    state.wasCrouching = state.isCrouching;
+    
+    // Can only crouch when grounded and not dashing
+    if (state.isGrounded && !state.isDashing && input.down) {
+      state.isCrouching = true;
+    } else {
+      state.isCrouching = false;
+    }
+    
+
+  }
+  
+  /**
    * Handle horizontal movement with acceleration and friction
    */
   private handleHorizontalMovement(
@@ -119,8 +147,10 @@ export class MovementSystem {
     state: MovementState,
     deltaTime: number
   ): void {
-    const maxSpeed = GAME_CONFIG.PLAYER.MAX_SPEED;
-    const acceleration = GAME_CONFIG.PLAYER.ACCELERATION;
+    // Reduce speed when crouching
+    const speedMultiplier = state.isCrouching ? 0.3 : 1.0;
+    const maxSpeed = GAME_CONFIG.PLAYER.MAX_SPEED * speedMultiplier;
+    const acceleration = GAME_CONFIG.PLAYER.ACCELERATION * speedMultiplier;
     const friction = GAME_CONFIG.PLAYER.FRICTION;
     const currentVelX = body.velocity.x;
     const dt = deltaTime / 1000; // Convert to seconds
@@ -214,8 +244,8 @@ export class MovementSystem {
     state: MovementState,
     dashState: DashState
   ): boolean {
-    // Check if dash is possible
-    if (!state.canDash || state.dashCooldown > 0 || state.isDashing || state.isGrounded) {
+    // Check if dash is possible (can't dash while crouching)
+    if (!state.canDash || state.dashCooldown > 0 || state.isDashing || state.isGrounded || state.isCrouching) {
       return false;
     }
     
@@ -353,7 +383,9 @@ export class MovementSystem {
       coyoteTime: 0,
       facingDirection: 1,
       wasJumpPressed: false,
-      wasDashPressed: false
+      wasDashPressed: false,
+      isCrouching: false,
+      wasCrouching: false
     };
   }
   

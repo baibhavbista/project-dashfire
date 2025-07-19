@@ -16,6 +16,7 @@ export interface AnimationState {
   isFalling: boolean;
   isLanding: boolean;
   isDashing: boolean;
+  isCrouching: boolean;
   
   // Tweens
   breathingTween?: Phaser.Tweens.Tween;
@@ -52,6 +53,7 @@ export class AnimationSystem {
       isFalling: false,
       isLanding: false,
       isDashing: false,
+      isCrouching: false,
       dashTrails: [],
       lastVelocityX: 0
     };
@@ -76,13 +78,16 @@ export class AnimationSystem {
     const absVelX = Math.abs(velocityX);
     const isIdle = absVelX < 10 && isGrounded && !isDashing;
     
+    // Update crouch animation first (base state)
+    this.updateCrouchAnimation(sprite, state);
+    
     // Update breathing animation
     this.updateBreathingAnimation(sprite, state, isIdle);
     
     // Update movement lean
     this.updateMovementLean(sprite, state, velocityX, isGrounded, isDashing);
     
-    // Update jump/fall deformation
+    // Update jump/fall deformation (can override crouch)
     this.updateJumpDeformation(sprite, state, velocityY, isGrounded, isDashing, delta);
     
     // Clean up old dash trails
@@ -300,7 +305,8 @@ export class AnimationSystem {
       if (state.breathingTween) {
         state.breathingTween.stop();
         state.breathingTween = undefined;
-        if (!state.isLanding) {
+        // Don't reset scale if crouching or landing
+        if (!state.isLanding && !state.isCrouching) {
           sprite.setScale(1, 1);
         }
       }
@@ -378,5 +384,24 @@ export class AnimationSystem {
   private updateDashTrails(state: AnimationState): void {
     // Clean up destroyed trails
     state.dashTrails = state.dashTrails.filter(trail => trail && trail.active);
+  }
+  
+  private updateCrouchAnimation(sprite: Phaser.GameObjects.Sprite, state: AnimationState): void {
+    // Don't update crouch if other animations are playing
+    if (state.isJumping || state.isLanding || state.isFalling) {
+      return;
+    }
+    
+    if (state.isCrouching) {
+      // Only set scale if not already crouched
+      if (Math.abs(sprite.scaleY - 0.5) > 0.01) {
+        sprite.setScale(sprite.scaleX, 0.5);
+      }
+    } else {
+      // Only reset scale if not already normal
+      if (Math.abs(sprite.scaleY - 1) > 0.01) {
+        sprite.setScale(sprite.scaleX, 1);
+      }
+    }
   }
 } 
