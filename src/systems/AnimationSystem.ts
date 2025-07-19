@@ -21,12 +21,18 @@ export interface AnimationState {
   // Tweens
   breathingTween?: Phaser.Tweens.Tween;
   landingSquashTween?: Phaser.Tweens.Tween;
+  postDashTween?: Phaser.Tweens.Tween;
   
   // Dash trails
   dashTrails: Phaser.GameObjects.Sprite[];
   
   // Direction memory
   lastVelocityX: number;
+  
+  // Post-dash scale persistence
+  postDashScaleX: number;
+  postDashScaleY: number;
+  wasDashing: boolean;
 }
 
 /**
@@ -55,7 +61,10 @@ export class AnimationSystem {
       isDashing: false,
       isCrouching: false,
       dashTrails: [],
-      lastVelocityX: 0
+      lastVelocityX: 0,
+      postDashScaleX: 1,
+      postDashScaleY: 1,
+      wasDashing: false
     };
   }
   
@@ -71,6 +80,33 @@ export class AnimationSystem {
     isDashing: boolean,
     delta: number
   ): void {
+    // Track dash state changes
+    if (state.isDashing && !isDashing) {
+      // Just stopped dashing - capture current scale
+      state.postDashScaleX = sprite.scaleX;
+      state.postDashScaleY = sprite.scaleY;
+      state.wasDashing = true;
+      
+      // Create a tween to maintain scale briefly then return to normal
+      if (state.postDashTween) {
+        state.postDashTween.stop();
+      }
+      
+      // Hold the scale for 150ms, then smoothly return to normal over 200ms
+      state.postDashTween = this.scene.tweens.add({
+        targets: sprite,
+        scaleX: 1,
+        scaleY: 1,
+        delay: 150,
+        duration: 200,
+        ease: 'Cubic.easeOut',
+        onComplete: () => {
+          state.wasDashing = false;
+          state.postDashTween = undefined;
+        }
+      });
+    }
+    
     // Update state flags
     state.isDashing = isDashing;
     
@@ -336,6 +372,9 @@ export class AnimationSystem {
     // If we are in the middle of a landing or jump anticipation, let the tweens handle it
     if (state.isLanding || (state.isJumping && isGrounded)) return;
     
+    // Don't update if we're in post-dash state (let the tween handle it)
+    if (state.wasDashing) return;
+    
     // Don't skip deformation during dashing - we want to capture the current height
     
     if (!isGrounded) {
@@ -388,7 +427,7 @@ export class AnimationSystem {
   
   private updateCrouchAnimation(sprite: Phaser.GameObjects.Sprite, state: AnimationState): void {
     // Don't update crouch if other animations are playing
-    if (state.isJumping || state.isLanding || state.isFalling) {
+    if (state.isJumping || state.isLanding || state.isFalling || state.wasDashing) {
       return;
     }
     
