@@ -33,6 +33,9 @@ export interface AnimationState {
   postDashScaleX: number;
   postDashScaleY: number;
   wasDashing: boolean;
+  
+  // Jump timing
+  jumpStartTime?: number;
 }
 
 /**
@@ -64,7 +67,8 @@ export class AnimationSystem {
       lastVelocityX: 0,
       postDashScaleX: 1,
       postDashScaleY: 1,
-      wasDashing: false
+      wasDashing: false,
+      jumpStartTime: undefined
     };
   }
   
@@ -180,6 +184,7 @@ export class AnimationSystem {
     // Apply landing squash
     sprite.setScale(LANDING_SQUASH_SCALE.x, LANDING_SQUASH_SCALE.y);
     state.isLanding = true;
+    state.jumpStartTime = undefined; // Clear any jump timing when landing
     
     // Bounce back with overshoot
     state.landingSquashTween = this.scene.tweens.add({
@@ -303,6 +308,7 @@ export class AnimationSystem {
       state.isBreathing = false;
     }
     state.isJumping = true;
+    state.jumpStartTime = Date.now();
 
     const { ANTICIPATION_SQUASH_SCALE, ANTICIPATION_DURATION, STRETCH_SCALE } = GAME_CONFIG.ANIMATION.JUMP;
 
@@ -375,6 +381,17 @@ export class AnimationSystem {
     // Don't update if we're in post-dash state (let the tween handle it)
     if (state.wasDashing) return;
     
+    // Protect jump stretch animation for a brief period after jump starts
+    // This handles the timing window where jump has started but player hasn't left ground yet
+    const JUMP_PROTECTION_MS = 150; // Protect stretch for 150ms after jump starts
+    if (state.isJumping && state.jumpStartTime && isGrounded) {
+      const timeSinceJump = Date.now() - state.jumpStartTime;
+      if (timeSinceJump < JUMP_PROTECTION_MS) {
+        // Still in protection window - don't reset the stretch
+        return;
+      }
+    }
+    
     // Don't skip deformation during dashing - we want to capture the current height
     
     if (!isGrounded) {
@@ -393,6 +410,7 @@ export class AnimationSystem {
         state.isFalling = true;
         state.targetScaleX = 1;
         state.targetScaleY = 1;
+        state.jumpStartTime = undefined; // Clear jump start time when transitioning to fall
       } else if (velocityY > 0 && !state.isJumping) {
         // Already falling without jumping - slight compression
         const t = Math.min(velocityY / 400, 1);
@@ -412,11 +430,12 @@ export class AnimationSystem {
         );
       }
     } else {
-      // Reset state flags when on the ground
+      // Reset all aerial state flags when on the ground
       state.isJumping = false;
       state.isFalling = false;
       state.targetScaleX = 1;
       state.targetScaleY = 1;
+      state.jumpStartTime = undefined; // Clear jump start time when truly grounded
     }
   }
   
