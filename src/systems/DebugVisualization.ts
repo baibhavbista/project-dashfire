@@ -1,6 +1,8 @@
 import Phaser from 'phaser';
 import { BasePlayer } from '../entities/BasePlayer';
 import { PlayerTextureManager } from '../entities/PlayerTextureManager';
+import { MovementState } from './MovementSystem';
+import { AnimationState } from './AnimationSystem';
 
 /**
  * Debug visualization system for showing bounding boxes, origins, and other debug info
@@ -49,7 +51,7 @@ export class DebugVisualization {
   /**
    * Update debug visualization for a player
    */
-  updatePlayer(player: BasePlayer): void {
+  updatePlayer(player: BasePlayer, movementState?: MovementState, animationState?: AnimationState): void {
     if (!this.enabled) return;
     
     const body = player.body as Phaser.Physics.Arcade.Body;
@@ -150,12 +152,31 @@ export class DebugVisualization {
     const textContent = [
       `Pos: ${Math.round(player.x)}, ${Math.round(player.y)}`,
       `Vel: ${Math.round(body.velocity.x)}, ${Math.round(body.velocity.y)}`,
-      `Body: ${body.width}x${body.height}`,
-      `Texture: ${Math.round(spriteBounds.width)}x${Math.round(spriteBounds.height)}`,
-      `Origin: ${player.originX.toFixed(2)}, ${player.originY.toFixed(2)}`,
-      `FlipX: ${player.flipX}`,
-      `Grounded: ${body.blocked.down}`
+      `Grounded: ${body.blocked.down}`,
+      `Scale: ${player.scaleX.toFixed(2)}, ${player.scaleY.toFixed(2)}`
     ];
+    
+    // Add movement state info if available
+    if (movementState) {
+      textContent.push('--- Movement State ---');
+      textContent.push(`isJumping: ${movementState.isJumping}`);
+      textContent.push(`wasJumpPressed: ${movementState.wasJumpPressed}`);
+      textContent.push(`coyoteTime: ${movementState.coyoteTime.toFixed(0)}ms`);
+      textContent.push(`isDashing: ${movementState.isDashing}`);
+      textContent.push(`isCrouching: ${movementState.isCrouching}`);
+      textContent.push(`canDash: ${movementState.canDash}`);
+    }
+    
+    // Add animation state info if available
+    if (animationState) {
+      textContent.push('--- Animation State ---');
+      textContent.push(`isJumping: ${animationState.isJumping}`);
+      textContent.push(`isFalling: ${animationState.isFalling}`);
+      textContent.push(`isLanding: ${animationState.isLanding}`);
+      textContent.push(`isDashing: ${animationState.isDashing}`);
+      textContent.push(`wasDashing: ${animationState.wasDashing}`);
+      textContent.push(`isCrouching: ${animationState.isCrouching}`);
+    }
     
     debugText.setText(textContent.join('\n'));
   }

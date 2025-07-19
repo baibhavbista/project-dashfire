@@ -249,9 +249,19 @@ export class GameScene extends Phaser.Scene {
     
     // Update debug visualization
     this.debugVisualization.clear();
-    this.debugVisualization.updatePlayer(this.player);
     
-    // Update debug visualization for remote players
+    // For local player, pass the detailed states
+    if (this.player instanceof LocalPlayer) {
+      this.debugVisualization.updatePlayer(
+        this.player, 
+        this.player.getMovementState(),
+        this.player.getAnimationState()
+      );
+    } else {
+      this.debugVisualization.updatePlayer(this.player);
+    }
+    
+    // Update debug visualization for remote players (no detailed states)
     this.remotePlayers.forEach(remotePlayer => {
       this.debugVisualization.updatePlayer(remotePlayer);
     });

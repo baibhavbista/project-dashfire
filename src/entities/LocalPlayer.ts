@@ -4,6 +4,7 @@ import { GAME_CONFIG, Team } from '../config/GameConfig';
 import { INPUT_CONFIG } from '../config/InputConfig';
 import { MovementSystem, MovementInput, MovementState } from '../systems/MovementSystem';
 import { PlayerBulletInterface } from './PlayerBulletInterface';
+import { AnimationState } from '../systems/AnimationSystem';
 
 /**
  * Local player class that handles input and uses MovementSystem
@@ -342,6 +343,13 @@ export class LocalPlayer extends BasePlayer {
    */
   public get isDashing(): boolean {
     return this.movementState.isDashing;
+  }
+  
+  /**
+   * Get animation state for debugging
+   */
+  public getAnimationState(): AnimationState {
+    return this.animationController.getState();
   }
   
   /**

@@ -369,8 +369,8 @@ export class AnimationSystem {
     isDashing: boolean,
     delta: number
   ): void {
-    // If we are in the middle of a landing or jump anticipation, let the tweens handle it
-    if (state.isLanding || (state.isJumping && isGrounded)) return;
+    // If we are in the middle of a landing animation, let the tween handle it
+    if (state.isLanding) return;
     
     // Don't update if we're in post-dash state (let the tween handle it)
     if (state.wasDashing) return;
