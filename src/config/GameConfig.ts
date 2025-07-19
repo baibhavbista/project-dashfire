@@ -28,7 +28,7 @@ export const GAME_CONFIG = {
       TRAIL_FADE_DURATION: 200,
       BUFFER_WINDOW_MS: 100,     // Input buffer window
       DIRECTION_BUFFER_MS: 80,   // Time to wait for directional input after pressing dash
-      DIAGONAL_WINDOW_MS: 50,    // Additional time to capture diagonal inputs
+      DIAGONAL_WINDOW_MS: 120,   // Additional time to capture diagonal inputs (increased from 50ms for better reliability)
     },
     
     // Physics
