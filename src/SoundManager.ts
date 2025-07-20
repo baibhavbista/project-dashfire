@@ -8,41 +8,97 @@ export class SoundManager {
   private hitSound?: Phaser.Sound.BaseSound;
   private deathSound?: Phaser.Sound.BaseSound;
   
+  // Base volumes for each sound effect
+  private baseVolumes = {
+    jump: 0.6,
+    dash: 0.6,
+    shoot: 0.8,
+    hit: 0.8,
+    death: 0.8
+  };
+  
+  private currentSfxVolume: number = 0.5;
+  
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
     this.createSounds();
+    this.setupVolumeListener();
   }
 
   private createSounds(): void {
+    // Get SFX volume from localStorage
+    this.currentSfxVolume = parseFloat(localStorage.getItem('sfxVolume') || '1.0');
+    
     // Create jump sound (short rising tone)
     this.jumpSound = this.scene.sound.add('jump', { 
-      volume: 0.3,
+      volume: this.baseVolumes.jump * this.currentSfxVolume,
       rate: 1.2
     });
 
     // Create dash sound (whoosh effect)
     this.dashSound = this.scene.sound.add('dash', {
-      volume: 0.4,
+      volume: this.baseVolumes.dash * this.currentSfxVolume,
       rate: 1.0
     });
 
     // Create shoot sound (laser pew)
     this.shootSound = this.scene.sound.add('shoot', {
-      volume: 0.6,
+      volume: this.baseVolumes.shoot * this.currentSfxVolume,
       rate: 1.3
     });
     
     // Create hit sound
     this.hitSound = this.scene.sound.add('hit', {
-      volume: 0.5,
+      volume: this.baseVolumes.hit * this.currentSfxVolume,
       rate: 1.0
     });
     
     // Create death sound
     this.deathSound = this.scene.sound.add('death', {
-      volume: 0.6,
+      volume: this.baseVolumes.death * this.currentSfxVolume,
       rate: 0.8
     });
+  }
+  
+  private setupVolumeListener(): void {
+    // Listen for volume changes from the VolumeControlManager
+    this.scene.game.events.on('sfxVolumeChanged', (volume: number) => {
+      this.currentSfxVolume = volume;
+      this.updateVolumes();
+    });
+    
+    // Clean up listener when scene shuts down
+    this.scene.events.once('shutdown', () => {
+      this.scene.game.events.off('sfxVolumeChanged');
+    });
+  }
+  
+  private updateVolumes(): void {
+    // Update all sound volumes based on new SFX volume
+    if (this.jumpSound && 'setVolume' in this.jumpSound) {
+      (this.jumpSound as Phaser.Sound.WebAudioSound | Phaser.Sound.HTML5AudioSound)
+        .setVolume(this.baseVolumes.jump * this.currentSfxVolume);
+    }
+    
+    if (this.dashSound && 'setVolume' in this.dashSound) {
+      (this.dashSound as Phaser.Sound.WebAudioSound | Phaser.Sound.HTML5AudioSound)
+        .setVolume(this.baseVolumes.dash * this.currentSfxVolume);
+    }
+    
+    if (this.shootSound && 'setVolume' in this.shootSound) {
+      (this.shootSound as Phaser.Sound.WebAudioSound | Phaser.Sound.HTML5AudioSound)
+        .setVolume(this.baseVolumes.shoot * this.currentSfxVolume);
+    }
+    
+    if (this.hitSound && 'setVolume' in this.hitSound) {
+      (this.hitSound as Phaser.Sound.WebAudioSound | Phaser.Sound.HTML5AudioSound)
+        .setVolume(this.baseVolumes.hit * this.currentSfxVolume);
+    }
+    
+    if (this.deathSound && 'setVolume' in this.deathSound) {
+      (this.deathSound as Phaser.Sound.WebAudioSound | Phaser.Sound.HTML5AudioSound)
+        .setVolume(this.baseVolumes.death * this.currentSfxVolume);
+    }
   }
 
   playJump(): void {

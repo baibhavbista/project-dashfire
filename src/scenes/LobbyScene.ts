@@ -31,6 +31,13 @@ export class LobbyScene extends Phaser.Scene {
     super({ key: 'LobbyScene' });
   }
   
+  preload() {
+    // Load arena music if not already loaded
+    if (!this.cache.audio.exists('arena-music')) {
+      this.load.audio('arena-music', 'audio/music/arena-normal.mp3');
+    }
+  }
+  
   create() {
     // Title
     this.add.text(512, 50, 'Multiplayer Lobby', { 
@@ -108,6 +115,24 @@ export class LobbyScene extends Phaser.Scene {
     
     // Initialize network manager and fetch rooms
     this.initializeNetwork();
+    
+    // Continue arena music from menu
+    const currentMusic = this.sound.getAllPlaying();
+    const isArenaMusicPlaying = currentMusic.some(sound => sound.key === 'arena-music');
+    
+    if (!isArenaMusicPlaying) {
+      // Stop any other music
+      this.sound.stopAll();
+      
+      // Get volume from localStorage
+      const musicVolume = parseFloat(localStorage.getItem('musicVolume') || '0.25');
+      
+      // Play arena music
+      this.sound.play('arena-music', {
+        loop: true,
+        volume: musicVolume
+      });
+    }
   }
   
   async initializeNetwork() {

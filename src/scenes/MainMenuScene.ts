@@ -4,6 +4,7 @@ import { GAME_CONFIG } from '../config/GameConfig';
 import { PlayerTextureManager } from '../entities/PlayerTextureManager';
 import { AnimationController } from '../systems/AnimationController';
 import { getTeamColors } from '../config/Colors';
+import { VolumeControlManager } from '../ui/VolumeControlManager';
 
 // Demo player class for menu animations
 class DemoPlayer extends Phaser.Physics.Arcade.Sprite {
@@ -71,15 +72,28 @@ export class MainMenuScene extends Phaser.Scene {
   private demoPlayers: DemoPlayer[] = [];
   private platforms: Phaser.Physics.Arcade.StaticGroup;
   private modalContainer?: Phaser.GameObjects.Container;
+  private volumeControlManager!: VolumeControlManager;
+  private musicStarted: boolean = false;
+  private clickToStartText?: Phaser.GameObjects.Text;
   
   constructor() {
     super({ key: 'MainMenuScene' });
     this.platforms = null!;
   }
   
+  init() {
+    // Reset music state
+    this.musicStarted = false;
+  }
+  
   preload() {
     // Create white texture for effects
     this.load.image('white-pixel', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==');
+    
+    // Load menu music - try without streaming to see if it loads faster
+    this.load.audio('menu-music', 'audio/music/main-menu.mp3');
+    
+
   }
   
   create() {
@@ -87,6 +101,54 @@ export class MainMenuScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
     const centerX = width / 2;
     const centerY = height / 2;
+    
+    // Handle audio unlock - browser requires interaction every session
+    if (this.sound.locked) {
+      
+      // Create "Click to Start" text
+      this.clickToStartText = this.add.text(centerX, height - 50, 'Click anywhere for music', {
+        fontSize: '24px',
+        fontFamily: GAME_CONFIG.UI.FONT.FAMILY,
+        color: '#ffffff',
+        backgroundColor: '#000000',
+        padding: { x: 20, y: 10 }
+      });
+      this.clickToStartText.setOrigin(0.5);
+      this.clickToStartText.setAlpha(0.8);
+      this.clickToStartText.setDepth(1000);
+      
+      // Pulse animation
+      this.tweens.add({
+        targets: this.clickToStartText,
+        alpha: 0.4,
+        duration: 1000,
+        ease: 'Sine.easeInOut',
+        yoyo: true,
+        repeat: -1
+      });
+      
+      // Wait for user interaction
+      this.input.once('pointerdown', () => {
+        
+        // Unlock audio
+        if (this.sound.locked) {
+          this.sound.unlock();
+        }
+        
+        // Remove click to start text
+        if (this.clickToStartText) {
+          this.tweens.killTweensOf(this.clickToStartText);
+          this.clickToStartText.destroy();
+          this.clickToStartText = undefined;
+        }
+        
+        // Start music
+        this.startMenuMusic();
+      });
+    } else {
+      // Audio already unlocked, start music immediately
+      this.startMenuMusic();
+    }
     
     // Set deep blue background
     this.cameras.main.setBackgroundColor(0x1B2C59);
@@ -195,6 +257,10 @@ export class MainMenuScene extends Phaser.Scene {
     
     // Handle resize events
     this.scale.on('resize', this.resize, this);
+    
+    // Initialize volume control manager
+    this.volumeControlManager = new VolumeControlManager(this);
+    this.volumeControlManager.createSoundButton();
   }
   
   private resize(gameSize: Phaser.Structs.Size): void {
@@ -202,6 +268,43 @@ export class MainMenuScene extends Phaser.Scene {
     const height = gameSize.height;
     
     this.cameras.resize(width, height);
+  }
+  
+  private startMenuMusic(): void {
+    // Prevent multiple attempts to start music
+    if (this.musicStarted) {
+      return;
+    }
+    
+    // Check if we already have music playing
+    const currentMusic = this.sound.getAllPlaying();
+    const isMenuMusicPlaying = currentMusic.some(sound => sound.key === 'menu-music');
+    
+    if (!isMenuMusicPlaying && this.cache.audio.exists('menu-music')) {
+      this.musicStarted = true;
+      
+      // Stop any other music that might be playing
+      this.sound.stopAll();
+      
+      // Get volume from localStorage
+      const musicVolume = parseFloat(localStorage.getItem('musicVolume') || '0.25');
+      
+      // Try to play menu music
+      try {
+        const music = this.sound.play('menu-music', {
+          loop: true,
+          volume: musicVolume
+        });
+        
+        if (!music) {
+          console.error('Failed to play menu music');
+          this.musicStarted = false;
+        }
+      } catch (error) {
+        console.error('Error playing menu music:', error);
+        this.musicStarted = false;
+      }
+          }
   }
   
   private setupButtonInteractions(): void {
@@ -487,6 +590,11 @@ export class MainMenuScene extends Phaser.Scene {
   }
   
   update(_time: number, delta: number): void {
+    // Try to start music if it hasn't started yet
+    if (!this.musicStarted && !this.sound.locked && this.cache.audio.exists('menu-music')) {
+      this.startMenuMusic();
+    }
+    
     // Update all demo players
     this.demoPlayers.forEach(player => {
       const body = player.body as Phaser.Physics.Arcade.Body;
@@ -603,7 +711,7 @@ export class MainMenuScene extends Phaser.Scene {
     
     // Create modal background
     const modalWidth = Math.min(650, width * 0.8);
-    const modalHeight = Math.min(400, height * 0.8);
+    const modalHeight = Math.min(500, height * 0.8);
     const modalBg = this.add.rectangle(centerX, centerY, modalWidth, modalHeight, 0x2A3F5F);
     modalBg.setStrokeStyle(2, 0xffffff);
     
@@ -621,7 +729,9 @@ export class MainMenuScene extends Phaser.Scene {
     
     The character and visual style were heavily inspired by the game "Thomas Was Alone"
     
-    Platform mechanics (and dash!) inspired by the game "Celeste"`;
+    Platform mechanics (and dash!) inspired by the game "Celeste"
+    
+    All music in the game was AI-generated using suno.com`;
     
     const content = this.add.text(centerX, centerY, loremText, {
       fontSize: '18px',
@@ -693,6 +803,10 @@ export class MainMenuScene extends Phaser.Scene {
       player.destroy();
     });
     this.demoPlayers = [];
+    
+    // Clean up UI elements
+    this.volumeControlManager?.destroy();
+    this.clickToStartText?.destroy();
     
     // Remove resize listener
     this.scale.off('resize', this.resize, this);

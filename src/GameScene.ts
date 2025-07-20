@@ -48,6 +48,9 @@ export class GameScene extends Phaser.Scene {
     // Create white textures for sprites
     this.load.image('white-pixel', 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8/5+hHgAHggJ/PchI7wAAAABJRU5ErkJggg==');
     
+    // Load game music
+    this.load.audio('arena-music', 'audio/music/arena-normal.mp3');
+    
     // Load generated sounds
     const sounds = SoundManager.generateSoundDataURIs();
     this.load.audio('jump', sounds.jump);
@@ -191,6 +194,9 @@ export class GameScene extends Phaser.Scene {
       // Return to main menu
       this.scene.start('MainMenuScene');
     });
+    
+    // Start arena music
+    this.startArenaMusic();
 
   }
   
@@ -322,6 +328,20 @@ export class GameScene extends Phaser.Scene {
    */
   public getWeaponSystem(): WeaponSystem {
     return this.weaponSystem;
+  }
+  
+  private startArenaMusic(): void {
+    // Stop any currently playing music
+    this.sound.stopAll();
+    
+    // Get volume from localStorage
+    const musicVolume = parseFloat(localStorage.getItem('musicVolume') || '0.25');
+    
+    // Play arena music
+    this.sound.play('arena-music', {
+      loop: true,
+      volume: musicVolume
+    });
   }
 
 }

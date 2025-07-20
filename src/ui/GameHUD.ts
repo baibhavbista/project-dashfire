@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { COLORS } from '../config/Colors';
 import { GAME_CONFIG } from '../config/GameConfig';
+import { VolumeControlManager } from './VolumeControlManager';
 
 /**
  * Game HUD manager - handles all UI elements
@@ -29,6 +30,9 @@ export class GameHUD {
   
   // Container for multiplayer UI elements
   private multiplayerContainer?: Phaser.GameObjects.Container;
+  
+  // Volume control manager
+  private volumeControlManager: VolumeControlManager;
   
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -121,6 +125,10 @@ export class GameHUD {
     escapeHint.setOrigin(1, 0);
     escapeHint.setScrollFactor(0);
     escapeHint.setAlpha(0.6);
+    
+    // Initialize volume control manager
+    this.volumeControlManager = new VolumeControlManager(scene);
+    this.volumeControlManager.createSoundButton();
   }
   
   /**
@@ -246,5 +254,6 @@ export class GameHUD {
     this.respawnTimer.destroy();
     this.debugText.destroy();
     this.multiplayerContainer?.destroy();
+    this.volumeControlManager.destroy();
   }
 } 
