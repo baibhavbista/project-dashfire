@@ -43,12 +43,37 @@ export class NetworkManager extends Phaser.Events.EventEmitter {
   constructor() {
     super();
     
-    // Initialize Colyseus client
-    const protocol = window.location.protocol === "https:" ? "wss" : "ws";
-    const host = window.location.hostname;
-    const port = 3000; // Your server port
-    
-    this.client = new Colyseus.Client(`${protocol}://${host}:${port}`);
+    // Initialize Colyseus client with multiple fallback options
+    const serverUrl = this.determineServerUrl();
+    this.client = new Colyseus.Client(serverUrl);
+  }
+
+  private determineServerUrl(): string {
+    // 1. Check URL parameters (e.g., ?server=wss://custom-server.com:3000)
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlParamServer = urlParams.get('server');
+    if (urlParamServer) {
+      console.log('Using server from URL parameter:', urlParamServer);
+      return urlParamServer;
+    }
+
+    // 2. Check global window config (can be set in index.html)
+    const windowWithConfig = window as Window & { GAME_SERVER_URL?: string };
+    if (windowWithConfig.GAME_SERVER_URL) {
+      console.log('Using server from window config:', windowWithConfig.GAME_SERVER_URL);
+      return windowWithConfig.GAME_SERVER_URL;
+    }
+
+    // 3. Use environment variable (baked in at build time)
+    if (import.meta.env.VITE_COLYSEUS_SERVER_URL) {
+      console.log('Using server from environment variable:', import.meta.env.VITE_COLYSEUS_SERVER_URL);
+      return import.meta.env.VITE_COLYSEUS_SERVER_URL;
+    }
+
+    // 4. Default fallback
+    const defaultUrl = `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.hostname}:3000`;
+    console.log('Using default server URL:', defaultUrl);
+    return defaultUrl;
   }
 
   async connect(method: string = 'joinOrCreate', options: Record<string, any> = {}): Promise<void> {
@@ -243,12 +268,13 @@ export class NetworkManager extends Phaser.Events.EventEmitter {
 
   async getAvailableRooms(roomName: string = "team-battle"): Promise<RoomListing[]> {
     try {
-      // Construct the URL for fetching available rooms
-      const protocol = window.location.protocol;
-      const host = window.location.hostname;
-      const port = 3000;
+      // Use the same server URL configuration
+      const serverUrl = this.determineServerUrl();
       
-      const response = await fetch(`${protocol}//${host}:${port}/api/rooms/${roomName}`);
+      // Convert ws/wss to http/https for REST API
+      const apiUrl = serverUrl.replace('ws://', 'http://').replace('wss://', 'https://');
+      
+      const response = await fetch(`${apiUrl}/api/rooms/${roomName}`);
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
