@@ -8,8 +8,10 @@ import { GAME_CONFIG } from '../config/GameConfig';
  */
 export class VolumeControlManager {
   private scene: Phaser.Scene;
-  private soundButton?: Phaser.GameObjects.Container;
+  private soundButton?: Phaser.GameObjects.Arc;
+  private soundIcon?: Phaser.GameObjects.Graphics;
   private volumeModal?: Phaser.GameObjects.Container;
+  private wasTopOnly: boolean = false;
   
   constructor(scene: Phaser.Scene) {
     this.scene = scene;
@@ -19,78 +21,96 @@ export class VolumeControlManager {
    * Create sound button at specified position
    */
   createSoundButton(x?: number, y?: number): void {
-    const { width, height } = this.scene.cameras.main;
+    // Use game dimensions instead of camera dimensions for consistent positioning
+    const { width, height } = this.scene.scale.gameSize;
     const buttonX = x ?? width - 60;
     const buttonY = y ?? height - 60;
     
-    // Create container for sound button
-    this.soundButton = this.scene.add.container(buttonX, buttonY);
+    // Create button background directly (not in a container)
+    this.soundButton = this.scene.add.circle(buttonX, buttonY, 25, 0x2A3F5F);
+    this.soundButton.setInteractive({ useHandCursor: true });
+    this.soundButton.setAlpha(0.8);
     this.soundButton.setScrollFactor(0);
-    this.soundButton.setDepth(100);
+    this.soundButton.setDepth(9000);  // High depth but below modal
     
-    // Create button background
-    const buttonBg = this.scene.add.circle(0, 0, 25, 0x2A3F5F);
-    buttonBg.setInteractive();
-    buttonBg.setAlpha(0.8);
+    // Create speaker icon
+    this.soundIcon = this.scene.add.graphics();
+    this.soundIcon.setScrollFactor(0);
+    this.soundIcon.setDepth(9001);
     
-    // Create speaker icon using graphics
-    const iconGraphics = this.scene.add.graphics();
+    // Position icon at button location
+    this.soundIcon.x = buttonX;
+    this.soundIcon.y = buttonY;
     
     // Draw speaker shape
-    iconGraphics.fillStyle(0xffffff, 1);
+    this.soundIcon.fillStyle(0xffffff, 1);
     
     // Speaker body (trapezoid) - moved left by 3 pixels
-    iconGraphics.beginPath();
-    iconGraphics.moveTo(-11, -4);
-    iconGraphics.lineTo(-7, -4);
-    iconGraphics.lineTo(-7, 4);
-    iconGraphics.lineTo(-11, 4);
-    iconGraphics.closePath();
-    iconGraphics.fillPath();
+    this.soundIcon.beginPath();
+    this.soundIcon.moveTo(-11, -4);
+    this.soundIcon.lineTo(-7, -4);
+    this.soundIcon.lineTo(-7, 4);
+    this.soundIcon.lineTo(-11, 4);
+    this.soundIcon.closePath();
+    this.soundIcon.fillPath();
     
     // Speaker cone - moved left by 3 pixels
-    iconGraphics.beginPath();
-    iconGraphics.moveTo(-7, -6);
-    iconGraphics.lineTo(1, -10);
-    iconGraphics.lineTo(1, 10);
-    iconGraphics.lineTo(-7, 6);
-    iconGraphics.closePath();
-    iconGraphics.fillPath();
+    this.soundIcon.beginPath();
+    this.soundIcon.moveTo(-7, -6);
+    this.soundIcon.lineTo(1, -10);
+    this.soundIcon.lineTo(1, 10);
+    this.soundIcon.lineTo(-7, 6);
+    this.soundIcon.closePath();
+    this.soundIcon.fillPath();
     
     // Sound waves - moved left by 3 pixels
-    iconGraphics.lineStyle(2, 0xffffff, 0.8);
-    iconGraphics.beginPath();
-    iconGraphics.arc(3, 0, 4, -Math.PI/3, Math.PI/3, false);
-    iconGraphics.strokePath();
+    this.soundIcon.lineStyle(2, 0xffffff, 0.8);
+    this.soundIcon.beginPath();
+    this.soundIcon.arc(3, 0, 4, -Math.PI/3, Math.PI/3, false);
+    this.soundIcon.strokePath();
     
-    iconGraphics.beginPath();
-    iconGraphics.arc(3, 0, 8, -Math.PI/3, Math.PI/3, false);
-    iconGraphics.strokePath();
+    this.soundIcon.beginPath();
+    this.soundIcon.arc(3, 0, 8, -Math.PI/3, Math.PI/3, false);
+    this.soundIcon.strokePath();
     
-    this.soundButton.add([buttonBg, iconGraphics]);
-    
-    // Add hover effects
-    buttonBg.on('pointerover', () => {
-      buttonBg.setScale(1.1);
-      buttonBg.setAlpha(1);
+    // Add hover effects to button
+    this.soundButton.on('pointerover', () => {
+      this.soundButton?.setScale(1.1);
+      this.soundIcon?.setScale(1.1);
+      this.soundButton?.setAlpha(1);
     });
     
-    buttonBg.on('pointerout', () => {
-      buttonBg.setScale(1);
-      buttonBg.setAlpha(0.8);
+    this.soundButton.on('pointerout', () => {
+      this.soundButton?.setScale(1);
+      this.soundIcon?.setScale(1);
+      this.soundButton?.setAlpha(0.8);
     });
     
-    buttonBg.on('pointerdown', () => {
+    this.soundButton.on('pointerdown', () => {
       this.showVolumeModal();
     });
+    
+    // Bring button to top of display list
+    this.scene.children.bringToTop(this.soundButton);
+    this.scene.children.bringToTop(this.soundIcon);
     
     // Handle screen resize
     this.scene.scale.on('resize', (gameSize: Phaser.Structs.Size) => {
       const newX = x ?? gameSize.width - 60;
       const newY = y ?? gameSize.height - 60;
       this.soundButton?.setPosition(newX, newY);
+      this.soundIcon?.setPosition(newX, newY);
       if (this.volumeModal) {
+        // Also update modal position to center of screen
         this.volumeModal.setPosition(gameSize.width / 2, gameSize.height / 2);
+        
+        // Update overlay size to cover entire screen
+        const overlay = this.volumeModal.list[0] as Phaser.GameObjects.Rectangle;
+        if (overlay) {
+          overlay.setSize(gameSize.width * 2, gameSize.height * 2);
+          // Keep overlay centered at 0,0 relative to container
+          overlay.setPosition(0, 0);
+        }
       }
     });
   }
@@ -101,23 +121,35 @@ export class VolumeControlManager {
   private showVolumeModal(): void {
     if (this.volumeModal) return; // Already open
     
-    const { width, height } = this.scene.cameras.main;
+    // Enable topOnly temporarily to ensure modal gets input priority
+    this.wasTopOnly = this.scene.input.topOnly;
+    this.scene.input.topOnly = true;
+    
+    // Use game dimensions for consistent screen positioning
+    const { width, height } = this.scene.scale.gameSize;
     const centerX = width / 2;
     const centerY = height / 2;
     
     // Create modal container
     this.volumeModal = this.scene.add.container(centerX, centerY);
     this.volumeModal.setScrollFactor(0);
-    this.volumeModal.setDepth(1001);
+    this.volumeModal.setDepth(10000);  // Very high depth to ensure it's above everything
     
-    // Create dark overlay
+    // Create dark overlay that covers the entire screen
     const overlay = this.scene.add.rectangle(0, 0, width * 2, height * 2, 0x000000, 0.7);
+    overlay.setOrigin(0.5);  // Center the overlay
     overlay.setInteractive();
     overlay.on('pointerdown', () => this.closeVolumeModal());
     
     // Create modal background
     const modalBg = this.scene.add.rectangle(0, 0, 400, 300, 0x2A3F5F);
     modalBg.setStrokeStyle(2, 0xffffff);
+    modalBg.setInteractive();  // Make modal background interactive to capture input
+    
+    // Prevent clicks on modal background from closing the modal
+    modalBg.on('pointerdown', () => {
+      // Just consume the event
+    });
     
     // Modal title
     const title = this.scene.add.text(0, -100, 'SOUND SETTINGS', {
@@ -174,7 +206,7 @@ export class VolumeControlManager {
     
     // Close button
     const closeButton = this.scene.add.rectangle(0, 120, 100, 40, 0x3A5578);
-    closeButton.setInteractive();
+    closeButton.setInteractive({ useHandCursor: true });
     closeButton.setStrokeStyle(2, 0xffffff);
     
     const closeText = this.scene.add.text(0, 120, 'CLOSE', {
@@ -198,7 +230,9 @@ export class VolumeControlManager {
       closeText.setScale(1);
     });
     
-    closeButton.on('pointerdown', () => this.closeVolumeModal());
+    closeButton.on('pointerdown', () => {
+      this.closeVolumeModal();
+    });
     
     // Add all elements to modal
     this.volumeModal.add([
@@ -217,6 +251,9 @@ export class VolumeControlManager {
       duration: 200,
       ease: 'Power2'
     });
+    
+    // Ensure modal is on top of everything
+    this.scene.children.bringToTop(this.volumeModal);
   }
   
   /**
@@ -303,6 +340,7 @@ export class VolumeControlManager {
       onComplete: () => {
         this.volumeModal?.destroy();
         this.volumeModal = undefined;
+        this.scene.input.topOnly = this.wasTopOnly; // Restore topOnly state
       }
     });
   }
@@ -312,6 +350,10 @@ export class VolumeControlManager {
    */
   destroy(): void {
     this.soundButton?.destroy();
+    this.soundIcon?.destroy();
     this.volumeModal?.destroy();
+    
+    // Remove resize listener
+    this.scene.scale.off('resize');
   }
 } 
