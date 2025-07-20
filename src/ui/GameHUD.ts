@@ -111,6 +111,16 @@ export class GameHUD {
     scene.input.keyboard?.on('keydown-F3', () => {
       this.toggleDebug();
     });
+    
+    // Add escape key hint
+    const escapeHint = scene.add.text(1014, 10, 'ESC - Main Menu', {
+      fontSize: GAME_CONFIG.UI.FONT.SIZE.SMALL,
+      color: COLORS.UI.TEXT_MUTED,
+      fontFamily: GAME_CONFIG.UI.FONT.FAMILY
+    });
+    escapeHint.setOrigin(1, 0);
+    escapeHint.setScrollFactor(0);
+    escapeHint.setAlpha(0.6);
   }
   
   /**

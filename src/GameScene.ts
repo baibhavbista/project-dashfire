@@ -177,6 +177,21 @@ export class GameScene extends Phaser.Scene {
       this.multiplayerCoordinator.initialize();
     }
 
+    // Add escape key to return to menu
+    this.input.keyboard?.on('keydown-ESC', () => {
+      // If in multiplayer, disconnect properly
+      if (this.networkManager && this.networkManager.getRoom()) {
+        this.networkManager.disconnect();
+      }
+      
+      // Clear registry
+      this.game.registry.set('networkManager', null);
+      this.game.registry.set('isMultiplayer', false);
+      
+      // Return to main menu
+      this.scene.start('MainMenuScene');
+    });
+
   }
   
   setupPlayerEventListeners() {

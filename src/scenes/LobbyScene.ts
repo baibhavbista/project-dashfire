@@ -99,9 +99,9 @@ export class LobbyScene extends Phaser.Scene {
       .setInteractive()
       .on('pointerover', () => backButton.setFillStyle(0xdd0000))
       .on('pointerout', () => backButton.setFillStyle(0xff0000))
-      .on('pointerdown', () => this.scene.start('GameScene'));
+      .on('pointerdown', () => this.scene.start('MainMenuScene'));
       
-    this.add.text(512, 660, 'Back to Game', { 
+    this.add.text(512, 660, 'Back to Menu', { 
       fontSize: '18px', 
       color: '#ffffff' 
     }).setOrigin(0.5);
