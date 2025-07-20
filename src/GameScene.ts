@@ -14,6 +14,7 @@ import { WorldBuilder } from './systems/WorldBuilder';
 import { MultiplayerCoordinator } from './systems/MultiplayerCoordinator';
 import { PlayerFactory } from './factories/PlayerFactory';
 import { DebugVisualization } from './systems/DebugVisualization';
+import { InGameMenu } from './ui/InGameMenu';
 
 // Team colors now imported from config/Colors.ts
 
@@ -33,15 +34,36 @@ export class GameScene extends Phaser.Scene {
   private gameHUD!: GameHUD;
   private killFeed!: KillFeed;
   private debugVisualization!: DebugVisualization;
+  private inGameMenu!: InGameMenu;
 
   // Game state
   private currentHealth: number = GAME_CONFIG.PLAYER.HEALTH.MAX;
   private isDead: boolean = false;
   private redScore: number = 0;
   private blueScore: number = 0;
+  private isMenuOpen: boolean = false;
 
   constructor() {
     super({ key: 'GameScene' });
+  }
+  
+  init() {
+    // Reset all state when scene is initialized
+    this.isMenuOpen = false;
+    this.isDead = false;
+    this.currentHealth = GAME_CONFIG.PLAYER.HEALTH.MAX;
+    this.redScore = 0;
+    this.blueScore = 0;
+    
+    // Clear remote players if the map exists
+    if (this.remotePlayers) {
+      this.remotePlayers.clear();
+    }
+    
+    // Reset all keyboard states
+    if (this.input && this.input.keyboard) {
+      this.input.keyboard.resetKeys();
+    }
   }
 
   preload() {
@@ -129,6 +151,9 @@ export class GameScene extends Phaser.Scene {
     // Initialize debug visualization
     this.debugVisualization = new DebugVisualization(this);
     
+    // Initialize in-game menu
+    this.inGameMenu = new InGameMenu(this);
+    
     // Set up bullet-platform collision detection (visual effects only in multiplayer)
     const bullets = this.weaponSystem.getBulletPool().getBullets();
     this.physics.add.overlap(bullets, this.platforms, (bulletObj) => {
@@ -180,19 +205,27 @@ export class GameScene extends Phaser.Scene {
       this.multiplayerCoordinator.initialize();
     }
 
-    // Add escape key to return to menu
-    this.input.keyboard?.on('keydown-ESC', () => {
-      // If in multiplayer, disconnect properly
-      if (this.networkManager && this.networkManager.getRoom()) {
-        this.networkManager.disconnect();
+    // Add escape key to toggle in-game menu
+    const escHandler = () => {
+      if (!this.inGameMenu.getIsVisible()) {
+        this.inGameMenu.show();
+        this.isMenuOpen = true;
       }
+      // Note: The menu handles its own ESC key to close itself
+    };
+    this.input.keyboard?.on('keydown-ESC', escHandler);
+    
+    // Add shutdown event to clean up when scene stops
+    this.events.once('shutdown', () => {
+      this.isMenuOpen = false;
       
-      // Clear registry
-      this.game.registry.set('networkManager', null);
-      this.game.registry.set('isMultiplayer', false);
+      // Remove the ESC handler specifically
+      this.input.keyboard?.off('keydown-ESC', escHandler);
       
-      // Return to main menu
-      this.scene.start('MainMenuScene');
+      // Force hide menu if it's visible
+      if (this.inGameMenu && this.inGameMenu.getIsVisible()) {
+        this.inGameMenu.hide();
+      }
     });
     
     // Start arena music
@@ -253,7 +286,13 @@ export class GameScene extends Phaser.Scene {
 
   update(time: number, delta: number) {
     // Guard against player not existing yet
-    if (!this.player || !this.player.body) {
+    if (!this.player) {
+      return;
+    }
+    
+    // If body is not ready, try to recreate it
+    if (!this.player.body) {
+      this.physics.world.enable(this.player);
       return;
     }
     
@@ -321,6 +360,7 @@ export class GameScene extends Phaser.Scene {
     this.gameHUD.destroy();
     this.killFeed.destroy();
     this.debugVisualization.destroy();
+    this.inGameMenu.destroy();
   }
 
   /**
@@ -328,6 +368,20 @@ export class GameScene extends Phaser.Scene {
    */
   public getWeaponSystem(): WeaponSystem {
     return this.weaponSystem;
+  }
+  
+  /**
+   * Check if the in-game menu is open
+   */
+  public isInGameMenuOpen(): boolean {
+    return this.isMenuOpen;
+  }
+  
+  /**
+   * Set the in-game menu state
+   */
+  public setInGameMenuOpen(isOpen: boolean): void {
+    this.isMenuOpen = isOpen;
   }
   
   private startArenaMusic(): void {

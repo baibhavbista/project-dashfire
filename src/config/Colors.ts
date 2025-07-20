@@ -47,10 +47,20 @@ export const COLORS = {
     TEXT_PRIMARY: '#ffffff',   // Pure white
     TEXT_MUTED: '#999999',     // Muted gray
     TEXT_DEBUG: '#00ff00',     // Debug green
+    TEXT_SECONDARY: '#cccccc', // Secondary text color
     
     // UI backgrounds
     UI_BG: 0x1A1A1A,          // Dark background for UI elements
     UI_BG_ALPHA: 0.8,         // Alpha for UI backgrounds
+    
+    // Panel colors
+    PANEL_BG: 0x2D2D3D,       // Slightly purple-tinted panel background
+    PANEL_BORDER: 0x4A4A5A,   // Panel border color
+    
+    // Button colors
+    BUTTON_BG: 0x3A3A4A,      // Button background
+    BUTTON_HOVER: 0x4A4A5A,   // Button hover state
+    BUTTON_BORDER: 0x5A5A6A,  // Button border
   },
 
   // Effect colors

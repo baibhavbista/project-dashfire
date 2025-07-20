@@ -5,6 +5,7 @@ import { INPUT_CONFIG } from '../config/InputConfig';
 import { MovementSystem, MovementInput, MovementState } from '../systems/MovementSystem';
 import { PlayerBulletInterface } from './PlayerBulletInterface';
 import { AnimationState } from '../systems/AnimationSystem';
+import { GameScene } from '../GameScene';
 
 /**
  * Local player class that handles input and uses MovementSystem
@@ -88,16 +89,20 @@ export class LocalPlayer extends BasePlayer {
     // Skip if dead
     if (this.isDead) return;
     
+    // Skip input processing if menu is open
+    const gameScene = this.scene as GameScene;
+    const isMenuOpen = gameScene && gameScene.isInGameMenuOpen ? gameScene.isInGameMenuOpen() : false;
+    
     const body = this.body as Phaser.Physics.Arcade.Body;
     
-    // Gather input
+    // Gather input (block all inputs if menu is open)
     const input: MovementInput = {
-      left: this.cursors.left.isDown,
-      right: this.cursors.right.isDown,
-      up: this.cursors.up.isDown,
-      down: this.cursors.down.isDown,
-      jump: this.jumpKey.isDown,
-      dash: this.dashKey.isDown
+      left: isMenuOpen ? false : this.cursors.left.isDown,
+      right: isMenuOpen ? false : this.cursors.right.isDown,
+      up: isMenuOpen ? false : this.cursors.up.isDown,
+      down: isMenuOpen ? false : this.cursors.down.isDown,
+      jump: isMenuOpen ? false : this.jumpKey.isDown,
+      dash: isMenuOpen ? false : this.dashKey.isDown
     };
     
     // Handle jump with anticipation animation
@@ -282,8 +287,9 @@ export class LocalPlayer extends BasePlayer {
   }
   
   private handleShooting(): void {
-    // Can't shoot while crouching
-    if (this.movementState.isCrouching) {
+    // Can't shoot while crouching or when menu is open
+    const gameScene = this.scene as GameScene;
+    if (this.movementState.isCrouching || (gameScene && gameScene.isInGameMenuOpen && gameScene.isInGameMenuOpen())) {
       return;
     }
     
@@ -356,7 +362,17 @@ export class LocalPlayer extends BasePlayer {
    * Clean up resources
    */
   public destroy(fromScene?: boolean): void {
+    // Remove all event emitters
     this.events.removeAllListeners();
+    
+    // Clean up input references
+    this.cursors = null!;
+    this.jumpKey = null!;
+    this.dashKey = null!;
+    this.shootKey = null!;
+    this.shootKeyAlt = null!;
+    
+    // Call parent destroy
     super.destroy(fromScene);
   }
 } 

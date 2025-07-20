@@ -84,6 +84,16 @@ export class MainMenuScene extends Phaser.Scene {
   init() {
     // Reset music state
     this.musicStarted = false;
+    
+    // Clean up any existing demo players when scene is restarted
+    if (this.demoPlayers && this.demoPlayers.length > 0) {
+      this.demoPlayers.forEach(player => {
+        if (player && player.body) {
+          player.destroy();
+        }
+      });
+      this.demoPlayers = [];
+    }
   }
   
   preload() {
@@ -599,6 +609,11 @@ export class MainMenuScene extends Phaser.Scene {
     this.demoPlayers.forEach(player => {
       const body = player.body as Phaser.Physics.Arcade.Body;
       
+      // Skip if body is not properly initialized
+      if (!body || !body.blocked) {
+        return;
+      }
+      
       // Apply basic friction when on ground and not dashing
       if (body.blocked.down && !player.animationController.getState().isDashing) {
         const friction = GAME_CONFIG.PLAYER.FRICTION;
@@ -680,10 +695,10 @@ export class MainMenuScene extends Phaser.Scene {
     this.game.registry.set('isMultiplayer', false);
     
     // Transition to game
-    this.cameras.main.fadeOut(250, 0, 0, 0);
-    this.time.delayedCall(250, () => {
-      this.scene.start('GameScene');
-    });
+          this.cameras.main.fadeOut(250, 0, 0, 0);
+      this.time.delayedCall(250, () => {
+        this.scene.start('GameScene');
+      });
   }
   
   private startMultiplayerLobby(): void {
