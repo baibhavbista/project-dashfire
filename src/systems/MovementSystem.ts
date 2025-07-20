@@ -245,7 +245,7 @@ export class MovementSystem {
     dashState: DashState
   ): boolean {
     // Check if dash is possible (can't dash while crouching)
-    if (!state.canDash || state.dashCooldown > 0 || state.isDashing || state.isGrounded || state.isCrouching) {
+    if (!state.canDash || state.dashCooldown > 0 || state.isDashing || state.isCrouching) {
       return false;
     }
     

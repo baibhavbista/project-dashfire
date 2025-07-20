@@ -22,7 +22,7 @@ export const GAME_CONFIG = {
     
     // Dash mechanics
     DASH: {
-      POWER: 800,
+      POWER: 1100,              // Increased from 800 for more powerful dashes
       DURATION: 150,            // milliseconds
       COOLDOWN: 300,            // milliseconds (longer for network sync)
       MAX_TRAILS: 8,

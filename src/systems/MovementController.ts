@@ -127,8 +127,7 @@ export class MovementController {
   public canDash(): boolean {
     return this.movementState.canDash && 
            this.movementState.dashCooldown <= 0 && 
-           !this.movementState.isDashing && 
-           !this.movementState.isGrounded;
+           !this.movementState.isDashing;
   }
   
   /**

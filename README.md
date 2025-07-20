@@ -1,6 +1,6 @@
 # Project DashFire
 
-A Celeste-inspired 2D platformer game built with Phaser 3, React, and TypeScript. Features precise movement mechanics, air dashing, and a sprawling arena to explore.
+A Celeste-inspired 2D platformer game built with Phaser 3, React, and TypeScript. Features precise movement mechanics, powerful dashing, and a sprawling arena to explore.
 
 ## 🎮 Game Features
 
@@ -12,7 +12,7 @@ A Celeste-inspired 2D platformer game built with Phaser 3, React, and TypeScript
 - **Dynamic Gravity**: Adaptive gravity system for better jump feel
 
 ### Dash Mechanics (Celeste-inspired)
-- **Air Dash Only**: Can only dash while airborne (not on ground)
+- **Ground and Air Dash**: Can dash both while on ground and airborne
 - **8-Directional Dashing**: Dash in any of 8 directions using arrow keys
 - **Single Use**: One dash per air time (resets when touching ground)
 - **Fixed Distance**: Consistent dash distance regardless of button hold duration
@@ -122,6 +122,6 @@ Potential features for future development:
 
 ## 📝 Development Notes
 
-The game emphasizes tight, responsive controls similar to modern indie platformers like Celeste. The dash system is particularly inspired by Celeste's air dash mechanics, providing players with precise aerial control and encouraging skillful movement through the environment.
+The game emphasizes tight, responsive controls similar to modern indie platformers like Celeste. The dash system provides players with powerful mobility options both on ground and in air, enabling precise movement control and encouraging skillful navigation through the environment.
 
 The codebase is structured for easy expansion, with clear separation between game logic, physics, and presentation layers.
