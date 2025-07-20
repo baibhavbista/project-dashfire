@@ -1,6 +1,6 @@
 /**
- * Centralized input configuration for Project SlingFire
- * All key bindings and input settings
+ * Centralized input configuration for Project DashFire
+ * Defines key mappings and constants for player controls.
  */
 
 import Phaser from 'phaser';

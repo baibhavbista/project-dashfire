@@ -1,4 +1,4 @@
-# Project SlingFire (currently just a platformer)
+# Project DashFire
 
 A Celeste-inspired 2D platformer game built with Phaser 3, React, and TypeScript. Features precise movement mechanics, air dashing, and a sprawling arena to explore.
 
@@ -125,4 +125,3 @@ Potential features for future development:
 The game emphasizes tight, responsive controls similar to modern indie platformers like Celeste. The dash system is particularly inspired by Celeste's air dash mechanics, providing players with precise aerial control and encouraging skillful movement through the environment.
 
 The codebase is structured for easy expansion, with clear separation between game logic, physics, and presentation layers.
-</parameter>

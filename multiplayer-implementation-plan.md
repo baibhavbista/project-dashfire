@@ -1,7 +1,7 @@
 # Team Battle Multiplayer Implementation Plan
 
 ## 🎯 Overview
-Implementation plan for adding team-based multiplayer to Project Slingfire using Colyseus and Node.js.
+Implementation plan for adding team-based multiplayer to Project DashFire using Colyseus and Node.js.
 
 ## 📋 Phases
 
@@ -104,7 +104,7 @@ TeamBattleState
 
 ### Directory Structure
 ```
-project-slingfire/
+project-dashfire/
 ├── client/ (existing game)
 │   ├── src/
 │   │   ├── network/

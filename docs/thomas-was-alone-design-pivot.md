@@ -1,7 +1,7 @@
 # Thomas Was Alone Design Pivot
 
 ## 🎯 Vision
-Transform Project SlingFire from a cartoonish platformer into a sophisticated, minimalist multiplayer experience inspired by Thomas Was Alone's aesthetic. Players are rectangles with personality, fighting in atmospheric arenas.
+Transform Project DashFire from a cartoonish platformer into a sophisticated, minimalist multiplayer experience inspired by Thomas Was Alone's aesthetic. Players are rectangles with personality, fighting in atmospheric arenas.
 
 ## 🎨 Visual Design Language
 
@@ -205,4 +205,4 @@ Beyond Thomas Was Alone, we can add:
 
 ---
 
-This pivot will transform Project SlingFire into a visually striking, competitively focused experience that stands out with its bold minimalist aesthetic. 
+This pivot will transform Project DashFire into a visually striking, competitively focused experience that stands out with its bold minimalist aesthetic. 

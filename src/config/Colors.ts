@@ -1,6 +1,8 @@
 /**
- * Centralized color configuration for Project SlingFire
- * All colors follow the Thomas Was Alone minimalist aesthetic
+ * Centralized color configuration for Project DashFire
+ * Defines the color palette used throughout the game, including UI,
+ * character, and environmental colors. This follows the "Thomas Was Alone"
+ * minimalist aesthetic.
  */
 
 export const COLORS = {

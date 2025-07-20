@@ -1,6 +1,7 @@
 /**
- * Centralized gameplay configuration for Project SlingFire
- * All physics, timing, and gameplay constants
+ * Centralized gameplay configuration for Project DashFire
+ * Defines constants for game mechanics like player health, movement,
+ * and physics properties. This ensures that game balance can be
  */
 
 export const GAME_CONFIG = {
