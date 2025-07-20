@@ -124,8 +124,8 @@ export class WorldBuilder {
       });
     }
     
-    // Add vignette effect (dark edges)
-    this.createVignetteEffect();
+    // Add vignette effect (dark edges) - DISABLED: Causes visual issues with camera
+    // this.createVignetteEffect();
   }
 
   /**
