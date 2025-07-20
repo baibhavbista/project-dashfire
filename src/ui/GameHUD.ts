@@ -126,9 +126,10 @@ export class GameHUD {
     escapeHint.setScrollFactor(0);
     escapeHint.setAlpha(0.6);
     
-    // Initialize volume control manager
-    this.volumeControlManager = new VolumeControlManager(scene);
-    this.volumeControlManager.createSoundButton();
+    // For some coordinate reason, volume control manager is very buggy when in the game scene. so, removing for now
+    // // Initialize volume control manager
+    // this.volumeControlManager = new VolumeControlManager(scene);
+    // this.volumeControlManager.createSoundButton();
   }
   
   /**
