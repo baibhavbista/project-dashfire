@@ -161,7 +161,7 @@ export class MainMenuScene extends Phaser.Scene {
     }
     
     // Set deep blue background
-    this.cameras.main.setBackgroundColor(0x1B2C59);
+    this.cameras.main.setBackgroundColor(COLORS.BACKGROUND.MENU_BLUE);
     
     // Set physics to match game settings
     this.physics.world.gravity.y = 1800;
@@ -199,7 +199,7 @@ export class MainMenuScene extends Phaser.Scene {
     const buttonHeight = 60;
     const buttonSpacing = 20;
     const buttonsY = centerY + height * 0.05;
-    const buttonColor = 0x2A3F5F; // Darker blue-gray for better contrast
+    const buttonColor = COLORS.UI.MENU_BUTTON_BG; // Darker blue-gray for better contrast
     
     // Practice button
     this.practiceButton = this.add.rectangle(
@@ -321,12 +321,12 @@ export class MainMenuScene extends Phaser.Scene {
     // Practice button interactions
     this.practiceButton
       .on('pointerover', () => {
-        this.practiceButton.setFillStyle(0x3A5578);
+        this.practiceButton.setFillStyle(COLORS.UI.MENU_BUTTON_HOVER);
         this.practiceButton.setScale(1.02);
         this.practiceButtonText.setScale(1.02);
       })
       .on('pointerout', () => {
-        this.practiceButton.setFillStyle(0x2A3F5F);
+        this.practiceButton.setFillStyle(COLORS.UI.MENU_BUTTON_BG);
         this.practiceButton.setScale(1);
         this.practiceButtonText.setScale(1);
       })
@@ -337,12 +337,12 @@ export class MainMenuScene extends Phaser.Scene {
     // Multiplayer button interactions
     this.multiplayerButton
       .on('pointerover', () => {
-        this.multiplayerButton.setFillStyle(0x3A5578);
+        this.multiplayerButton.setFillStyle(COLORS.UI.MENU_BUTTON_HOVER);
         this.multiplayerButton.setScale(1.02);
         this.multiplayerButtonText.setScale(1.02);
       })
       .on('pointerout', () => {
-        this.multiplayerButton.setFillStyle(0x2A3F5F);
+        this.multiplayerButton.setFillStyle(COLORS.UI.MENU_BUTTON_BG);
         this.multiplayerButton.setScale(1);
         this.multiplayerButtonText.setScale(1);
       })
@@ -353,12 +353,12 @@ export class MainMenuScene extends Phaser.Scene {
     // About button interactions
     this.aboutButton
       .on('pointerover', () => {
-        this.aboutButton.setFillStyle(0x3A5578);
+        this.aboutButton.setFillStyle(COLORS.UI.MENU_BUTTON_HOVER);
         this.aboutButton.setScale(1.02);
         this.aboutButtonText.setScale(1.02);
       })
       .on('pointerout', () => {
-        this.aboutButton.setFillStyle(0x2A3F5F);
+        this.aboutButton.setFillStyle(COLORS.UI.MENU_BUTTON_BG);
         this.aboutButton.setScale(1);
         this.aboutButtonText.setScale(1);
       })
@@ -376,7 +376,7 @@ export class MainMenuScene extends Phaser.Scene {
     const platformLeftY = height * 0.45;
 
     const platformHeight = 20;
-    const platformColor = 0x2A3F5F;
+    const platformColor = COLORS.PLATFORMS.MENU_STYLE;
     
     // Left area - jumping player
     const leftX = width * 0.15;
@@ -727,7 +727,7 @@ export class MainMenuScene extends Phaser.Scene {
     // Create modal background
     const modalWidth = Math.min(650, width * 0.8);
     const modalHeight = Math.min(500, height * 0.8);
-    const modalBg = this.add.rectangle(centerX, centerY, modalWidth, modalHeight, 0x2A3F5F);
+    const modalBg = this.add.rectangle(centerX, centerY, modalWidth, modalHeight, COLORS.UI.MENU_BUTTON_BG);
     modalBg.setStrokeStyle(2, 0xffffff);
     
     // Modal title
@@ -758,7 +758,7 @@ export class MainMenuScene extends Phaser.Scene {
     }).setOrigin(0.5);
     
     // Close button
-    const closeButton = this.add.rectangle(centerX, centerY + modalHeight/2 - 60, 120, 40, 0x3A5578);
+    const closeButton = this.add.rectangle(centerX, centerY + modalHeight/2 - 60, 120, 40, COLORS.UI.MENU_BUTTON_HOVER);
     closeButton.setInteractive();
     closeButton.setStrokeStyle(2, 0xffffff);
     
@@ -777,7 +777,7 @@ export class MainMenuScene extends Phaser.Scene {
         closeText.setScale(1.05);
       })
       .on('pointerout', () => {
-        closeButton.setFillStyle(0x3A5578);
+        closeButton.setFillStyle(COLORS.UI.MENU_BUTTON_HOVER);
         closeButton.setScale(1);
         closeText.setScale(1);
       })

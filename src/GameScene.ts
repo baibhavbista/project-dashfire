@@ -95,8 +95,8 @@ export class GameScene extends Phaser.Scene {
     // Store reference to this scene for external access
     (this.game as Phaser.Game & { gameScene?: GameScene }).gameScene = this;
     
-    // Set dark background color (Thomas Was Alone style)
-    this.cameras.main.setBackgroundColor(COLORS.BACKGROUND.MAIN);
+    // Set dark background color (matching MainMenuScene)
+    this.cameras.main.setBackgroundColor(COLORS.BACKGROUND.MENU_BLUE);
     
     // Check if we're in multiplayer mode
     const networkManager = this.game.registry.get('networkManager');
@@ -132,7 +132,7 @@ export class GameScene extends Phaser.Scene {
 
     // Enable 2D lighting system for shadows
     this.lights.enable();
-    this.lights.setAmbientColor(0x1a1828); // Very dark ambient light for mood
+    this.lights.setAmbientColor(0x2a3a4a); // Slightly brighter ambient light to match blue theme
 
     // Initialize weapon system
     this.weaponSystem = new WeaponSystem(this, this.player);
@@ -210,8 +210,10 @@ export class GameScene extends Phaser.Scene {
       if (!this.inGameMenu.getIsVisible()) {
         this.inGameMenu.show();
         this.isMenuOpen = true;
+      } else {
+        this.inGameMenu.hide();
+        this.isMenuOpen = false;
       }
-      // Note: The menu handles its own ESC key to close itself
     };
     this.input.keyboard?.on('keydown-ESC', escHandler);
     

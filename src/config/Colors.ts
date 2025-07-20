@@ -12,13 +12,15 @@ export const COLORS = {
     SECONDARY: 0x3d3a50,      // Atmospheric patterns (adjusted for purple)
     VIGNETTE: 0x1a1828,       // Darker purple for edges
     FOG: 0x1E1E1E,            // Ambient fog (not used yet)
+    MENU_BLUE: 0x1B2C59,      // Deep blue used in menus
   },
 
   // Platform colors
   PLATFORMS: {
-    MAIN: 0x2B2B2B,           // Main arena floor
-    ELEVATED: 0x3A3A3A,       // Elevated platforms
-    EDGE: 0x4A4A4A,           // Platform edge highlights
+    MAIN: 0x2B2B2B,           // Main arena floor (old purple theme)
+    ELEVATED: 0x3A3A3A,       // Elevated platforms (old purple theme)
+    EDGE: 0x4A4A4A,           // Platform edge highlights (old purple theme)
+    MENU_STYLE: 0x2A3F5F,     // Darker blue-gray platform color (menu theme)
   },
 
   // Team colors
@@ -61,6 +63,8 @@ export const COLORS = {
     BUTTON_BG: 0x3A3A4A,      // Button background
     BUTTON_HOVER: 0x4A4A5A,   // Button hover state
     BUTTON_BORDER: 0x5A5A6A,  // Button border
+    MENU_BUTTON_BG: 0x2A3F5F, // Menu button background (darker blue-gray)
+    MENU_BUTTON_HOVER: 0x3A5578, // Menu button hover state
   },
 
   // Effect colors

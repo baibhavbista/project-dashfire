@@ -39,13 +39,13 @@ export class WorldBuilder {
    * Creates all platforms in the world
    */
   private createPlatforms(): void {
-    // Main arena floor using shared geometry - now solid black
+    // Main arena floor using shared geometry - matching MainMenuScene color
     const mainPlatform = this.scene.add.rectangle(
       MAIN_PLATFORM.x, 
       MAIN_PLATFORM.y, 
       MAIN_PLATFORM.width, 
       MAIN_PLATFORM.height, 
-      0x000000 // Solid black
+      COLORS.PLATFORMS.MENU_STYLE // Darker blue-gray matching menu
     );
     this.platforms.add(mainPlatform);
 
@@ -60,14 +60,14 @@ export class WorldBuilder {
    * Creates the elevated platforms using shared geometry
    */
   private createElevatedPlatforms(): void {
-    // Use shared platform definitions with solid black color
+    // Use shared platform definitions with menu color scheme
     ELEVATED_PLATFORMS.forEach(platform => {
       const rect = this.scene.add.rectangle(
         platform.x, 
         platform.y, 
         platform.width, 
         platform.height, 
-        0x000000 // Solid black
+        COLORS.PLATFORMS.MENU_STYLE // Darker blue-gray matching menu
       );
       rect.setPipeline('Light2D');
       this.platforms.add(rect);
@@ -86,7 +86,7 @@ export class WorldBuilder {
    * Creates atmospheric background elements
    */
   private createAtmosphericBackground(): void {
-    // Add subtle geometric patterns in the far background
+    // Add subtle geometric patterns in the far background (matching menu style)
     for (let i = 0; i < 10; i++) {
       const size = Phaser.Math.Between(100, 200);
       const shape = this.scene.add.rectangle(
@@ -94,23 +94,25 @@ export class WorldBuilder {
         Phaser.Math.Between(100, ARENA_HEIGHT - 200),
         size,
         size,
-        COLORS.BACKGROUND.SECONDARY,
-        0.1
+        0xffffff,  // White like menu
+        0.05       // Very subtle alpha like menu
       );
       shape.setScrollFactor(0.2); // Far parallax
       shape.setAngle(Phaser.Math.Between(0, 45));
+      shape.setDepth(-1); // Ensure it's above background but below everything else
     }
 
-    // Add floating ambient particles
+    // Add floating ambient particles (matching menu style)
     for (let i = 0; i < 20; i++) {
       const particle = this.scene.add.circle(
         Phaser.Math.Between(0, ARENA_WIDTH),
         Phaser.Math.Between(0, ARENA_HEIGHT),
-        Phaser.Math.Between(1, 3),
-        COLORS.EFFECTS.PARTICLE,
-        0.3
+        Phaser.Math.Between(10, 20),  // Larger like menu
+        0xffffff,  // White like menu
+        0.05       // Very subtle alpha like menu
       );
       particle.setScrollFactor(0.5); // Mid parallax
+      particle.setDepth(-1); // Ensure it's above background but below everything else
       
       // Animate floating
       this.scene.tweens.add({

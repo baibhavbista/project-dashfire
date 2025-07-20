@@ -13,7 +13,6 @@ export class InGameMenu extends Phaser.GameObjects.Container {
   private quitButtonText!: Phaser.GameObjects.Text;
   private controlsContainer!: Phaser.GameObjects.Container;
   private isVisible: boolean = false;
-  private escListener!: () => void;
   
   constructor(scene: GameScene) {
     super(scene, 0, 0);
@@ -38,14 +37,6 @@ export class InGameMenu extends Phaser.GameObjects.Container {
     // Start hidden
     this.setVisible(false);
     this.isVisible = false;
-    
-    // Set up ESC key listener for closing
-    this.escListener = () => {
-      if (this.isVisible) {
-        this.hide();
-      }
-    };
-    this.gameScene.input.keyboard?.on('keydown-ESC', this.escListener);
   }
   
   private createOverlay(): void {
@@ -286,10 +277,6 @@ export class InGameMenu extends Phaser.GameObjects.Container {
       this.gameScene.setInGameMenuOpen(false);
     }
     
-    // Remove ESC listener
-    if (this.escListener) {
-      this.gameScene.input.keyboard?.off('keydown-ESC', this.escListener);
-    }
     super.destroy();
   }
 } 

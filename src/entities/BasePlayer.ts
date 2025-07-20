@@ -2,7 +2,6 @@ import Phaser from 'phaser';
 import { GAME_CONFIG, Team } from '../config/GameConfig';
 import { AnimationController } from '../systems/AnimationController';
 import { PlayerTextureManager } from './PlayerTextureManager';
-import { getTeamColors } from '../config/Colors';
 
 /**
  * Base player class containing shared functionality for both local and remote players
@@ -111,6 +110,11 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
    * Creates a light source that follows the player
    */
   protected createPlayerLight(): void {
+    // Halo effect disabled for all players
+    // To re-enable player halos:
+    // 1. Import getTeamColors from '../config/Colors'
+    // 2. Uncomment the code below
+    /*
     const teamColors = getTeamColors(this.team);
     this.playerLight = this.scene.lights.addLight(
       this.x, 
@@ -119,6 +123,7 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
       teamColors.GLOW, // Color
       1.8           // Intensity
     );
+    */
   }
 
   /**
@@ -235,6 +240,7 @@ export class BasePlayer extends Phaser.Physics.Arcade.Sprite {
       this.healthBar.setPosition(this.x - 20, this.y - 65);
     }
 
+    // Only update light position if it exists (local player only)
     if (this.playerLight) {
       this.playerLight.setPosition(this.x, this.y - 20); // Position light slightly above feet
     }
